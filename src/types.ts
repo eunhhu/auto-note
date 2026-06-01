@@ -24,6 +24,10 @@ export type RuntimeStatus = {
   is_recording: boolean
   is_playing: boolean
   hotkey: string
+  play_hotkey: string
+  stop_hotkey: string
+  playback_cursor_ns: number | null
+  live_events: readonly SessionEvent[]
   keys: Record<KeyName, boolean>
 }
 

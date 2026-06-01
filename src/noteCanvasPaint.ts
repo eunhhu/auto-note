@@ -7,6 +7,7 @@ import {
   timeToY,
   type TimelineMetrics,
 } from './noteCanvasModel'
+import type { MarqueeRect } from './noteCanvasInteraction'
 import { NS_PER_SECOND, msToNs, nsToMs, type NoteSpan } from './timeline'
 
 type DrawArgs = {
@@ -14,6 +15,7 @@ type DrawArgs = {
   readonly cursorNs: number
   readonly ghostNotes: readonly NoteSpan[]
   readonly metrics: TimelineMetrics
+  readonly marquee: MarqueeRect | null
   readonly notes: readonly NoteSpan[]
   readonly offsetMs: number
   readonly selected: ReadonlySet<string>
@@ -22,14 +24,15 @@ type DrawArgs = {
 export function drawTimeline(context: CanvasRenderingContext2D, args: DrawArgs): void {
   const { metrics } = args
   context.clearRect(0, 0, metrics.width, metrics.height)
-  context.fillStyle = '#101114'
+  context.fillStyle = '#0b0c10'
   context.fillRect(0, 0, metrics.width, metrics.height)
-  context.fillStyle = '#191b20'
+  context.fillStyle = '#111418'
   context.fillRect(0, 0, TIME_RULER_WIDTH, metrics.height)
   drawColumns(context, metrics)
   drawGrid(context, args)
-  paintNotes(context, metrics, args.ghostNotes, '#e1c45a', 0.36, new Set())
-  paintNotes(context, metrics, args.notes, '#65d6c8', 0.9, args.selected)
+  paintNotes(context, metrics, args.ghostNotes, args.selected, true)
+  paintNotes(context, metrics, args.notes, args.selected, false)
+  drawMarquee(context, args.marquee)
   drawCursor(context, metrics, args.cursorNs)
 }
 
@@ -47,13 +50,15 @@ function drawGrid(context: CanvasRenderingContext2D, args: DrawArgs): void {
     const y = timeToY(t, metrics)
     const isBeat = stepIndex % 4 === 0
     context.lineWidth = isBeat ? 1.25 : 1
-    drawLine(context, 0, y, metrics.width, y, isBeat ? '#4f6373' : '#26313a')
+    drawLine(context, TIME_RULER_WIDTH, y, metrics.width, y, isBeat ? '#36566a' : '#1d252d')
     if (isBeat) {
-      context.fillStyle = '#d6dbe3'
-      context.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'
+      context.fillStyle = stepIndex % 16 === 0 ? '#20e6ff' : '#6b7280'
+      context.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace'
       context.textAlign = 'right'
       context.textBaseline = 'middle'
-      context.fillText(`${(nsToMs(t) / 1000).toFixed(1)}s`, TIME_RULER_WIDTH - 12, y)
+      context.fillText(`b${Math.floor(stepIndex / 4)}`, TIME_RULER_WIDTH - 44, y)
+      context.fillStyle = '#6b7280'
+      context.fillText(`${(nsToMs(t) / 1000).toFixed(1)}s`, TIME_RULER_WIDTH - 10, y)
     }
     stepIndex += 1
   }
@@ -66,9 +71,12 @@ function drawColumns(context: CanvasRenderingContext2D, metrics: TimelineMetrics
   context.textBaseline = 'middle'
   for (const [index] of metrics.lanes.entries()) {
     const x = laneToX(index)
-    context.fillStyle = index % 2 === 0 ? '#14161a' : '#171a1f'
+    context.fillStyle = index % 2 === 0 ? '#0f1115' : '#12151a'
     context.fillRect(x, HEADER_HEIGHT, KEY_LANE_WIDTH, metrics.height - HEADER_HEIGHT)
-    drawLine(context, x, 0, x, metrics.height, '#282d35')
+    drawLine(context, x, 0, x, metrics.height, '#242a33')
+    context.fillStyle = 'rgb(255 255 255 / 16%)'
+    context.font = '700 10px ui-monospace, SFMono-Regular, Menlo, monospace'
+    context.fillText(`COL ${index + 1}`, x + KEY_LANE_WIDTH / 2, HEADER_HEIGHT + 26)
   }
   drawLine(
     context,
@@ -76,7 +84,7 @@ function drawColumns(context: CanvasRenderingContext2D, metrics: TimelineMetrics
     0,
     TIME_RULER_WIDTH + metrics.lanes.length * KEY_LANE_WIDTH,
     metrics.height,
-    '#282d35',
+    '#242a33',
   )
   if (metrics.lanes.length === 0) {
     context.fillStyle = '#777d89'
@@ -90,34 +98,35 @@ function paintNotes(
   context: CanvasRenderingContext2D,
   metrics: TimelineMetrics,
   notes: readonly NoteSpan[],
-  color: string,
-  alpha: number,
   selected: ReadonlySet<string>,
+  isGhost: boolean,
 ): void {
-  context.globalAlpha = alpha
+  context.globalAlpha = isGhost ? 0.5 : 1
   for (const note of notes) {
     const rect = noteRect(note, metrics)
     if (!rect) {
       continue
     }
     const { height, width, x, y } = rect
-    context.fillStyle = selected.has(note.id) ? '#f5d76e' : color
+    const colors = noteColors(note.key, selected.has(note.id), isGhost)
+    context.fillStyle = colors.fill
     roundRect(context, x, y, width, height, 6)
     context.fill()
-    context.strokeStyle = selected.has(note.id) ? '#ff00a8' : color
-    context.lineWidth = selected.has(note.id) ? 3 : 2
+    context.strokeStyle = colors.stroke
+    context.lineWidth = selected.has(note.id) ? 4 : 2
     context.stroke()
     if (selected.has(note.id)) {
       drawResizeHandle(context, x, y, width)
       drawResizeHandle(context, x, y + height, width)
     }
-    context.fillStyle = '#edf0f5'
-    context.font = '700 12px ui-monospace, SFMono-Regular, Menlo, monospace'
+    context.fillStyle = selected.has(note.id) ? '#ffffff' : '#edf0f5'
+    context.font = '800 12px ui-monospace, SFMono-Regular, Menlo, monospace'
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.fillText(note.key, x + width / 2, y + Math.min(22, height / 2))
     if (height >= 34) {
       context.fillStyle = '#b7bdc8'
+      context.font = '700 11px ui-monospace, SFMono-Regular, Menlo, monospace'
       context.fillText(`${nsToMs(note.end_ns - note.start_ns)}ms`, x + width / 2, y + height - 14)
     }
   }
@@ -132,7 +141,7 @@ function drawResizeHandle(
   width: number,
 ): void {
   context.fillStyle = '#edf0f5'
-  context.fillRect(x + width / 2 - 8, y - 2, 16, 4)
+  context.fillRect(x + width / 2 - 5, y - 2, 10, 4)
 }
 
 function drawCursor(
@@ -141,7 +150,44 @@ function drawCursor(
   cursorNs: number,
 ): void {
   const y = timeToY(cursorNs, metrics)
-  drawLine(context, 0, y, metrics.width, y, '#20e6ff')
+  drawLine(context, TIME_RULER_WIDTH, y, metrics.width, y, '#20e6ff')
+  context.fillStyle = '#20e6ff'
+  context.beginPath()
+  context.arc(TIME_RULER_WIDTH, y, 5, 0, Math.PI * 2)
+  context.fill()
+}
+
+function drawMarquee(context: CanvasRenderingContext2D, marquee: MarqueeRect | null): void {
+  if (!marquee || marquee.width < 2 || marquee.height < 2) {
+    return
+  }
+  context.fillStyle = 'rgb(32 230 255 / 8%)'
+  context.strokeStyle = 'rgb(32 230 255 / 72%)'
+  context.lineWidth = 1
+  context.setLineDash([4, 4])
+  context.fillRect(marquee.x, marquee.y, marquee.width, marquee.height)
+  context.strokeRect(marquee.x, marquee.y, marquee.width, marquee.height)
+  context.setLineDash([])
+}
+
+function noteColors(key: string, selected: boolean, isGhost: boolean): { readonly fill: string; readonly stroke: string } {
+  if (selected) {
+    return { fill: 'rgb(255 0 127 / 28%)', stroke: '#ff007f' }
+  }
+  if (isGhost) {
+    return { fill: 'rgb(234 179 8 / 12%)', stroke: '#eab308' }
+  }
+  const index = key.charCodeAt(0) % 4
+  if (index === 0) {
+    return { fill: 'rgb(14 165 233 / 20%)', stroke: '#0ea5e9' }
+  }
+  if (index === 1) {
+    return { fill: 'rgb(168 85 247 / 18%)', stroke: '#a855f7' }
+  }
+  if (index === 2) {
+    return { fill: 'rgb(234 179 8 / 18%)', stroke: '#eab308' }
+  }
+  return { fill: 'rgb(16 185 129 / 18%)', stroke: '#10b981' }
 }
 
 function drawLine(

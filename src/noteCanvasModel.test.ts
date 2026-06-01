@@ -7,6 +7,7 @@ import {
   TIME_RULER_WIDTH,
   canvasBitmapSize,
   hitTest,
+  laneAtX,
   noteRect,
   timelineMetrics,
   timeToY,
@@ -74,7 +75,7 @@ describe('vertical timeline canvas model', () => {
       throw new Error('expected visible note rect')
     }
 
-    const outsideBlock = hitTest(TIME_RULER_WIDTH + KEY_LANE_WIDTH - 8, rect.y + 20, metrics, [note])
+    const outsideBlock = hitTest(TIME_RULER_WIDTH + KEY_LANE_WIDTH - 3, rect.y + 20, metrics, [note])
     const startHandle = hitTest(rect.x + NOTE_WIDTH / 2, rect.y + 2, metrics, [note])
     const endHandle = hitTest(rect.x + NOTE_WIDTH / 2, rect.y + rect.height - 2, metrics, [note])
 
@@ -95,5 +96,38 @@ describe('vertical timeline canvas model', () => {
       cssWidth: metrics.width,
       ratio: 2,
     })
+  })
+
+  it('uses compact lanes and narrow notes like the reference editor', () => {
+    expect(TIME_RULER_WIDTH).toBe(85)
+    expect(KEY_LANE_WIDTH).toBe(72)
+    expect(NOTE_WIDTH).toBe(56)
+  })
+
+  it('returns the lane at an empty grid coordinate for alt-click creation', () => {
+    const events: SessionEvent[] = [
+      { t_ns: msToNs(100), key: 'S', action: 'press' },
+      { t_ns: msToNs(200), key: 'S', action: 'release' },
+      { t_ns: msToNs(300), key: 'D', action: 'press' },
+      { t_ns: msToNs(400), key: 'D', action: 'release' },
+    ]
+    const metrics = timelineMetrics(events, [], 1)
+
+    expect(laneAtX(TIME_RULER_WIDTH + KEY_LANE_WIDTH + 12, metrics)).toBe('D')
+  })
+
+  it('keeps configured lane order and appends keys from recorded/ghost events', () => {
+    const events: SessionEvent[] = [
+      { t_ns: msToNs(100), key: 'J', action: 'press' },
+      { t_ns: msToNs(200), key: 'J', action: 'release' },
+    ]
+    const ghostEvents: SessionEvent[] = [
+      { t_ns: msToNs(300), key: 'K', action: 'press' },
+      { t_ns: msToNs(400), key: 'K', action: 'release' },
+    ]
+
+    const metrics = timelineMetrics(events, ghostEvents, 1, ['F', 'D'])
+
+    expect(metrics.lanes).toEqual(['F', 'D', 'J', 'K'])
   })
 })

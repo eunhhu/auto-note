@@ -4,6 +4,7 @@ export const NS_PER_MS = 1_000_000
 export const NS_PER_SECOND = 1_000_000_000
 export const MIN_NOTE_NS = 1_000_000
 export const ARROW_MOVE_NS = 1_000_000
+export const DEFAULT_NOTE_NS = 120_000_000
 
 export type NoteEdge = 'start' | 'end'
 
@@ -56,16 +57,47 @@ export function notesToEvents(notes: readonly NoteSpan[]): readonly SessionEvent
 }
 
 export function deriveKeys(events: readonly SessionEvent[]): readonly KeyName[] {
-  const keys: KeyName[] = []
-  const seen = new Set<KeyName>()
-  for (const event of events) {
-    if (seen.has(event.key)) {
-      continue
-    }
-    seen.add(event.key)
-    keys.push(event.key)
+  return uniqueKeys(events.map((event) => event.key))
+}
+
+export function mergeLaneOrder(
+  preferred: readonly KeyName[],
+  recorded: readonly KeyName[],
+): readonly KeyName[] {
+  const preferredKeys = uniqueKeys(preferred)
+  const preferredSet = new Set<KeyName>(preferredKeys)
+  const appended = uniqueKeys(recorded).filter((key) => !preferredSet.has(key))
+  return [...preferredKeys, ...appended]
+}
+
+export function reorderLane(
+  keys: readonly KeyName[],
+  lane: KeyName,
+  direction: 'left' | 'right',
+): readonly KeyName[] {
+  const laneIndex = keys.indexOf(lane)
+  if (laneIndex < 0) {
+    return keys
   }
-  return keys
+  const targetIndex = direction === 'left' ? laneIndex - 1 : laneIndex + 1
+  const clampedIndex = Math.max(0, Math.min(keys.length - 1, targetIndex))
+  if (clampedIndex === laneIndex) {
+    return keys
+  }
+  const next = [...keys]
+  const [moved] = next.splice(laneIndex, 1)
+  if (!moved) {
+    return keys
+  }
+  next.splice(clampedIndex, 0, moved)
+  return next
+}
+
+export function mergeRecordingPreview(
+  baseEvents: readonly SessionEvent[],
+  liveEvents: readonly SessionEvent[],
+): readonly SessionEvent[] {
+  return [...baseEvents, ...liveEvents].sort((a, b) => a.t_ns - b.t_ns || actionOrder(a) - actionOrder(b))
 }
 
 export function timelineDurationNs(events: readonly SessionEvent[]): number {
@@ -87,6 +119,42 @@ export function moveNotes(
     const end = start + duration
     return { ...note, start_ns: start, end_ns: end }
   })
+}
+
+export function moveNotesAcrossLanes(
+  notes: readonly NoteSpan[],
+  selectedIds: ReadonlySet<string>,
+  deltaNs: number,
+  laneDelta: number,
+  lanes: readonly KeyName[],
+): readonly NoteSpan[] {
+  return notes.map((note) => {
+    if (!selectedIds.has(note.id)) {
+      return note
+    }
+    const duration = note.end_ns - note.start_ns
+    const start = Math.max(0, note.start_ns + deltaNs)
+    const laneIndex = lanes.indexOf(note.key)
+    const nextLaneIndex = Math.max(0, Math.min(lanes.length - 1, laneIndex + laneDelta))
+    const key = lanes[nextLaneIndex] ?? note.key
+    return { ...note, key, start_ns: start, end_ns: start + duration }
+  })
+}
+
+export function createNoteSpan(
+  key: KeyName,
+  startNs: number,
+  salt: number,
+  durationNs = DEFAULT_NOTE_NS,
+): NoteSpan {
+  const start = Math.max(0, Math.round(startNs))
+  const end = start + Math.max(MIN_NOTE_NS, Math.round(durationNs))
+  return {
+    id: noteId(key, start, end, salt),
+    key,
+    start_ns: start,
+    end_ns: end,
+  }
 }
 
 export function resizeNote(
@@ -136,4 +204,17 @@ export function noteId(key: KeyName, startNs: number, endNs: number, salt: numbe
 
 function actionOrder(event: SessionEvent): number {
   return event.action === 'release' ? 1 : 0
+}
+
+function uniqueKeys(keys: readonly KeyName[]): readonly KeyName[] {
+  const ordered: KeyName[] = []
+  const seen = new Set<KeyName>()
+  for (const key of keys) {
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    ordered.push(key)
+  }
+  return ordered
 }
