@@ -1,19 +1,21 @@
 import { invoke } from '@tauri-apps/api/core'
 
 import { parseSessionJson } from './sessionSchema'
-import { deriveKeys } from './timeline'
 import type { PlatformStatus, PlaybackReport, RuntimeStatus, Session } from './types'
 
 type StopRecordingPayload = { name: string; bpm: number; offset_ms: number }
 
-type TauriApi = {
+export type TauriApi = {
   startRecording: () => Promise<void>
   startRecordingAt: (offsetMs: number) => Promise<void>
   stopRecording: (payload: StopRecordingPayload) => Promise<Session>
   playSession: (sessionId: string) => Promise<void>
   stopPlayback: () => Promise<void>
+  deleteSession: (sessionId: string) => Promise<void>
   getStatus: () => Promise<RuntimeStatus>
   setHotkey: (hotkey: string) => Promise<void>
+  setPlayHotkey: (hotkey: string) => Promise<void>
+  setStopHotkey: (hotkey: string) => Promise<void>
   updateSession: (session: Session) => Promise<void>
   listSessions: () => Promise<string[]>
   loadSession: (sessionId: string) => Promise<Session>
@@ -29,6 +31,10 @@ function defaultStatus(): RuntimeStatus {
     is_recording: false,
     is_playing: false,
     hotkey: 'F10',
+    play_hotkey: 'F9',
+    stop_hotkey: 'F8',
+    playback_cursor_ns: null,
+    live_events: [],
     keys: {},
   }
 }
@@ -46,13 +52,13 @@ function makeMockClient(): TauriApi {
 
   return {
     async startRecording() {
-      status = { ...status, is_recording: true }
+      status = { ...status, is_recording: true, live_events: [] }
     },
     async startRecordingAt() {
-      status = { ...status, is_recording: true }
+      status = { ...status, is_recording: true, live_events: [] }
     },
     async stopRecording(payload) {
-      status = { ...status, is_recording: false }
+      status = { ...status, is_recording: false, live_events: [] }
       const session: Session = {
         schema_version: 2,
         id: crypto.randomUUID(),
@@ -75,13 +81,16 @@ function makeMockClient(): TauriApi {
       if (session.events.length === 0) {
         throw new Error('No recorded events to play')
       }
-      status = { ...status, is_playing: true }
+      status = { ...status, is_playing: true, playback_cursor_ns: 0 }
       report = { max_drift_ns: 0, emitted_events: 0, cancelled: false }
-      status = { ...status, is_playing: false }
+      status = { ...status, is_playing: false, playback_cursor_ns: null }
     },
     async stopPlayback() {
-      status = { ...status, is_playing: false }
+      status = { ...status, is_playing: false, playback_cursor_ns: null }
       report = { max_drift_ns: 0, emitted_events: 0, cancelled: true }
+    },
+    async deleteSession(sessionId) {
+      sessions.delete(sessionId)
     },
     async getStatus() {
       return status
@@ -89,8 +98,14 @@ function makeMockClient(): TauriApi {
     async setHotkey(hotkey) {
       status = { ...status, hotkey }
     },
+    async setPlayHotkey(hotkey) {
+      status = { ...status, play_hotkey: hotkey }
+    },
+    async setStopHotkey(hotkey) {
+      status = { ...status, stop_hotkey: hotkey }
+    },
     async updateSession(session) {
-      sessions.set(session.id, { ...session, keys: deriveKeys(session.events) })
+      sessions.set(session.id, session)
     },
     async listSessions() {
       return [...sessions.keys()]
@@ -144,8 +159,11 @@ export function createTauriClient(): TauriApi {
       }),
     playSession: (sessionId) => invoke<void>('play_session', { sessionId }),
     stopPlayback: () => invoke<void>('stop_playback'),
+    deleteSession: (sessionId) => invoke<void>('delete_session', { sessionId }),
     getStatus: () => invoke<RuntimeStatus>('get_status'),
     setHotkey: (hotkey) => invoke<void>('set_hotkey', { hotkey }),
+    setPlayHotkey: (hotkey) => invoke<void>('set_play_hotkey', { hotkey }),
+    setStopHotkey: (hotkey) => invoke<void>('set_stop_hotkey', { hotkey }),
     updateSession: (session) => invoke<void>('update_session', { session }),
     listSessions: () => invoke<string[]>('list_sessions'),
     loadSession: (sessionId) => invoke<Session>('load_session', { sessionId }),

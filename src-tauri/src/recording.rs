@@ -47,6 +47,10 @@ impl RecordingReducer {
         self.recording
     }
 
+    pub fn live_events(&self) -> Vec<SessionEvent> {
+        self.events.clone()
+    }
+
     pub fn start(&mut self, now_ns: u64) -> Result<(), AppError> {
         self.start_at(now_ns, 0)
     }
@@ -138,5 +142,15 @@ mod tests {
         reducer.on_key_event(30, key("A"), KeyAction::Release);
         let events = reducer.stop().expect("stop");
         assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn exposes_live_events_while_recording() {
+        let mut reducer = RecordingReducer::new();
+        reducer.start(10).expect("start");
+        reducer.on_key_event(20, key("A"), KeyAction::Press);
+        let live = reducer.live_events();
+        assert_eq!(live.len(), 1);
+        assert_eq!(live[0].t_ns, 10);
     }
 }

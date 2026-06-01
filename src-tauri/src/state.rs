@@ -1,59 +1,32 @@
 use std::{
     collections::HashMap,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread::JoinHandle,
+    sync::Mutex,
 };
 
 use serde::Serialize;
 use tauri::AppHandle;
 
 use crate::{
-    adapters::{EnigoPlaybackSink, GlobalInputListener},
+    adapters::GlobalInputListener,
     error::AppError,
-    model::{KeyAction, Session},
+    model::{KeyAction, Session, SessionEvent},
     persistence::Persistence,
     platform::{PlatformStatus, detect_platform_status},
-    playback::{PlaybackClock, PlaybackReport, play_session},
+    playback::PlaybackReport,
     recording::RecordingReducer,
     timing::{ms_to_ns, now_ns},
+};
+
+#[path = "state_playback.rs"]
+mod state_playback;
+use state_playback::{
+    PlaybackRuntime, harvest_finished_playback, playback_cursor_ns, start_playback_inner,
+    stop_playback_inner,
 };
 
 #[cfg(test)]
 #[path = "state_tests.rs"]
 mod tests;
-
-struct SystemClock;
-
-impl PlaybackClock for SystemClock {
-    fn now_ns(&self) -> u64 {
-        now_ns()
-    }
-
-    fn sleep_until_ns(&mut self, target_ns: u64) {
-        loop {
-            let current = now_ns();
-            if current >= target_ns {
-                break;
-            }
-            let wait_ns = target_ns - current;
-            if wait_ns > 2_000_000 {
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            } else if wait_ns > 150_000 {
-                std::thread::sleep(std::time::Duration::from_micros(50));
-            } else {
-                std::hint::spin_loop();
-            }
-        }
-    }
-}
-
-struct PlaybackRuntime {
-    cancel: Arc<AtomicBool>,
-    handle: JoinHandle<Result<PlaybackReport, AppError>>,
-}
 
 struct RuntimeState {
     recording: RecordingReducer,
@@ -61,6 +34,9 @@ struct RuntimeState {
     listener: GlobalInputListener,
     playback: Option<PlaybackRuntime>,
     last_report: Option<PlaybackReport>,
+    play_hotkey: String,
+    stop_hotkey: String,
+    last_play_session_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -68,7 +44,11 @@ pub struct RuntimeStatus {
     pub is_recording: bool,
     pub is_playing: bool,
     pub hotkey: String,
+    pub play_hotkey: String,
+    pub stop_hotkey: String,
     pub keys: HashMap<String, bool>,
+    pub live_events: Vec<SessionEvent>,
+    pub playback_cursor_ns: Option<u64>,
 }
 
 pub struct AppState {
@@ -86,6 +66,9 @@ impl AppState {
             listener: GlobalInputListener::spawn(),
             playback: None,
             last_report: None,
+            play_hotkey: "F9".to_string(),
+            stop_hotkey: "F8".to_string(),
+            last_play_session_id: None,
         };
         Ok(Self {
             _app: app,
@@ -115,32 +98,12 @@ impl AppState {
 
     pub fn play_session(&self, session_id: String) -> Result<(), AppError> {
         let mut inner = self.lock_state()?;
-        if inner.playback.is_some() {
-            return Err(AppError::State("playback already active".to_string()));
-        }
-        let session = inner.persistence.load_session(&session_id)?;
-        let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_for_thread = Arc::clone(&cancel);
-        let handle = std::thread::spawn(move || {
-            let mut sink = EnigoPlaybackSink::new()?;
-            let mut clock = SystemClock;
-            play_session(&session, &cancel_for_thread, &mut clock, &mut sink)
-        });
-        inner.playback = Some(PlaybackRuntime { cancel, handle });
-        Ok(())
+        start_playback_inner(&mut inner, session_id)
     }
 
     pub fn stop_playback(&self) -> Result<(), AppError> {
         let mut inner = self.lock_state()?;
-        if let Some(runtime) = inner.playback.take() {
-            runtime.cancel.store(true, Ordering::Relaxed);
-            let report = runtime
-                .handle
-                .join()
-                .map_err(|_| AppError::Playback("playback thread panicked".to_string()))??;
-            inner.last_report = Some(report);
-        }
-        Ok(())
+        stop_playback_inner(&mut inner)
     }
 
     pub fn get_status(&self) -> Result<RuntimeStatus, AppError> {
@@ -151,13 +114,35 @@ impl AppState {
             is_recording: inner.recording.is_recording(),
             is_playing: inner.playback.is_some(),
             hotkey: inner.recording.hotkey().to_string(),
+            play_hotkey: inner.play_hotkey.clone(),
+            stop_hotkey: inner.stop_hotkey.clone(),
             keys: inner.recording.key_states(),
+            live_events: if inner.recording.is_recording() {
+                inner.recording.live_events()
+            } else {
+                vec![]
+            },
+            playback_cursor_ns: playback_cursor_ns(&inner),
         })
     }
 
     pub fn set_hotkey(&self, hotkey: String) -> Result<(), AppError> {
         let mut inner = self.lock_state()?;
         inner.recording.set_hotkey(hotkey)
+    }
+
+    pub fn set_play_hotkey(&self, hotkey: String) -> Result<(), AppError> {
+        let mut inner = self.lock_state()?;
+        validate_hotkey(&hotkey)?;
+        inner.play_hotkey = hotkey;
+        Ok(())
+    }
+
+    pub fn set_stop_hotkey(&self, hotkey: String) -> Result<(), AppError> {
+        let mut inner = self.lock_state()?;
+        validate_hotkey(&hotkey)?;
+        inner.stop_hotkey = hotkey;
+        Ok(())
     }
 
     pub fn list_sessions(&self) -> Result<Vec<String>, AppError> {
@@ -173,6 +158,14 @@ impl AppState {
     pub fn save_session(&self, session: Session) -> Result<(), AppError> {
         let inner = self.lock_state()?;
         inner.persistence.save_session(&session)
+    }
+
+    pub fn delete_session(&self, id: String) -> Result<(), AppError> {
+        let mut inner = self.lock_state()?;
+        if inner.last_play_session_id.as_deref() == Some(id.as_str()) {
+            inner.last_play_session_id = None;
+        }
+        inner.persistence.delete_session(&id)
     }
 
     pub fn import_session_json(&self, payload: String) -> Result<Session, AppError> {
@@ -203,11 +196,14 @@ impl AppState {
 }
 
 fn drain_listener(inner: &mut RuntimeState) -> Result<(), AppError> {
-    let hotkey = inner.recording.hotkey().to_string();
+    let record_hotkey = inner.recording.hotkey().to_string();
+    let play_hotkey = inner.play_hotkey.clone();
+    let stop_hotkey = inner.stop_hotkey.clone();
     for event in inner.listener.try_recv_all() {
-        let is_hotkey = event.key.as_str().eq_ignore_ascii_case(&hotkey);
-        if is_hotkey {
-            if matches!(event.action, KeyAction::Press) {
+        let key = event.key.as_str();
+        let is_press = matches!(event.action, KeyAction::Press);
+        if key.eq_ignore_ascii_case(&record_hotkey) {
+            if is_press {
                 if inner.recording.is_recording() {
                     let events = inner.recording.stop()?;
                     if !events.is_empty() {
@@ -217,6 +213,21 @@ fn drain_listener(inner: &mut RuntimeState) -> Result<(), AppError> {
                 } else {
                     inner.recording.start(event.when_ns)?;
                 }
+            }
+            continue;
+        }
+        if key.eq_ignore_ascii_case(&stop_hotkey) {
+            if is_press {
+                stop_playback_inner(inner)?;
+            }
+            continue;
+        }
+        if key.eq_ignore_ascii_case(&play_hotkey) {
+            if is_press
+                && inner.playback.is_none()
+                && let Some(session_id) = inner.last_play_session_id.clone()
+            {
+                start_playback_inner(inner, session_id)?;
             }
             continue;
         }
@@ -241,18 +252,9 @@ fn stop_recording_inner(
     Ok(session)
 }
 
-fn harvest_finished_playback(inner: &mut RuntimeState) -> Result<(), AppError> {
-    let should_join = inner
-        .playback
-        .as_ref()
-        .is_some_and(|runtime| runtime.handle.is_finished());
-
-    if should_join && let Some(runtime) = inner.playback.take() {
-        let report = runtime
-            .handle
-            .join()
-            .map_err(|_| AppError::Playback("playback thread panicked".to_string()))??;
-        inner.last_report = Some(report);
+fn validate_hotkey(hotkey: &str) -> Result<(), AppError> {
+    if hotkey.trim().is_empty() {
+        return Err(AppError::Validation("hotkey cannot be empty".to_string()));
     }
     Ok(())
 }

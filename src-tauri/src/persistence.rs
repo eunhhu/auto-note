@@ -99,6 +99,18 @@ impl Persistence {
         Ok(payload)
     }
 
+    pub fn delete_session(&self, id: &str) -> Result<(), AppError> {
+        let path = self.session_path(id);
+        fs::remove_file(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                AppError::NotFound(format!("session {id}"))
+            } else {
+                AppError::Io(error.to_string())
+            }
+        })?;
+        Ok(())
+    }
+
     fn sessions_dir(&self) -> PathBuf {
         self.data_dir.join("sessions")
     }
@@ -129,7 +141,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use crate::model::Session;
+    use crate::{error::AppError, model::Session};
 
     use super::Persistence;
 
@@ -154,5 +166,26 @@ mod tests {
         let result = persistence.load_session("bad");
         assert!(result.is_err());
         assert!(dir.path().join("quarantine/bad.corrupt.json").exists());
+    }
+
+    #[test]
+    fn deletes_existing_session_file() {
+        let dir = TempDir::new().expect("tempdir");
+        let persistence =
+            Persistence::with_data_dir(dir.path().to_path_buf()).expect("new persistence");
+        let session = Session::new("one".to_string(), 180.0, 0, vec![]);
+        persistence.save_session(&session).expect("save");
+        persistence.delete_session(&session.id).expect("delete");
+        let load = persistence.load_session(&session.id);
+        assert!(load.is_err());
+    }
+
+    #[test]
+    fn delete_missing_session_returns_not_found() {
+        let dir = TempDir::new().expect("tempdir");
+        let persistence =
+            Persistence::with_data_dir(dir.path().to_path_buf()).expect("new persistence");
+        let result = persistence.delete_session("missing-id");
+        assert!(matches!(result, Err(AppError::NotFound(_))));
     }
 }

@@ -1,9 +1,12 @@
-import type { PlatformStatus, PlaybackReport, RuntimeStatus, SessionEvent, Session } from './types'
+import { deriveKeys, mergeLaneOrder } from './timeline'
+import type { KeyName, PlatformStatus, PlaybackReport, RuntimeStatus, SessionEvent, Session } from './types'
 
-type Settings = {
-  bpm: number
-  offset_ms: number
-  hotkey: string
+export type Settings = {
+  readonly bpm: number
+  readonly offset_ms: number
+  readonly hotkey: string
+  readonly play_hotkey: string
+  readonly stop_hotkey: string
 }
 
 export type AppState = {
@@ -13,6 +16,7 @@ export type AppState = {
   selectedSessionId: string | null
   settings: Settings
   timelineEvents: readonly SessionEvent[]
+  timelineKeys: readonly KeyName[]
   importText: string
   exportText: string
   error: string | null
@@ -27,7 +31,10 @@ export type Action =
   | { type: 'set_bpm'; value: number }
   | { type: 'set_offset_ms'; value: number }
   | { type: 'set_hotkey'; value: string }
+  | { type: 'set_play_hotkey'; value: string }
+  | { type: 'set_stop_hotkey'; value: string }
   | { type: 'set_timeline_events'; events: readonly SessionEvent[] }
+  | { type: 'set_timeline_keys'; keys: readonly KeyName[] }
   | { type: 'set_import'; text: string }
   | { type: 'set_export'; text: string }
   | { type: 'set_error'; error: string | null }
@@ -39,6 +46,8 @@ const defaultSettings: Settings = {
   bpm: 180,
   offset_ms: 0,
   hotkey: 'F10',
+  play_hotkey: 'F9',
+  stop_hotkey: 'F8',
 }
 
 export function loadSettings(): Settings {
@@ -59,10 +68,9 @@ export function loadSettings(): Settings {
       offset_ms: Number.isInteger(parsed.offset_ms)
         ? Number(parsed.offset_ms)
         : defaultSettings.offset_ms,
-      hotkey:
-        typeof parsed.hotkey === 'string' && parsed.hotkey.length > 0
-          ? parsed.hotkey
-          : defaultSettings.hotkey,
+      hotkey: parseHotkey(parsed.hotkey, defaultSettings.hotkey),
+      play_hotkey: parseHotkey(parsed.play_hotkey, defaultSettings.play_hotkey),
+      stop_hotkey: parseHotkey(parsed.stop_hotkey, defaultSettings.stop_hotkey),
     }
   } catch {
     return defaultSettings
@@ -86,6 +94,10 @@ export function createInitialState(): AppState {
       is_recording: false,
       is_playing: false,
       hotkey: defaultSettings.hotkey,
+      play_hotkey: defaultSettings.play_hotkey,
+      stop_hotkey: defaultSettings.stop_hotkey,
+      playback_cursor_ns: null,
+      live_events: [],
       keys: {},
     },
     platform: null,
@@ -93,6 +105,7 @@ export function createInitialState(): AppState {
     selectedSessionId: null,
     settings: loadSettings(),
     timelineEvents: [],
+    timelineKeys: [],
     importText: '',
     exportText: '',
     error: null,
@@ -134,8 +147,30 @@ export function appReducer(state: AppState, action: Action): AppState {
           hotkey: action.value,
         },
       }
+    case 'set_play_hotkey':
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          play_hotkey: action.value,
+        },
+      }
+    case 'set_stop_hotkey':
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          stop_hotkey: action.value,
+        },
+      }
     case 'set_timeline_events':
-      return { ...state, timelineEvents: action.events }
+      return {
+        ...state,
+        timelineEvents: action.events,
+        timelineKeys: mergeLaneOrder(state.timelineKeys, deriveKeys(action.events)),
+      }
+    case 'set_timeline_keys':
+      return { ...state, timelineKeys: action.keys }
     case 'set_import':
       return { ...state, importText: action.text }
     case 'set_export':
@@ -147,4 +182,8 @@ export function appReducer(state: AppState, action: Action): AppState {
     default:
       return state
   }
+}
+
+function parseHotkey(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value : fallback
 }

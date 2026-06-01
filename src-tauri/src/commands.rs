@@ -53,6 +53,16 @@ pub fn set_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), Comm
 }
 
 #[tauri::command]
+pub fn set_play_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), CommandError> {
+    state.set_play_hotkey(hotkey).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn set_stop_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), CommandError> {
+    state.set_stop_hotkey(hotkey).map_err(CommandError::from)
+}
+
+#[tauri::command]
 pub fn update_session(state: State<'_, AppState>, session: Session) -> Result<(), CommandError> {
     state.save_session(session).map_err(CommandError::from)
 }
@@ -73,6 +83,11 @@ pub fn load_session(
 #[tauri::command]
 pub fn save_session(state: State<'_, AppState>, session: Session) -> Result<(), CommandError> {
     state.save_session(session).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn delete_session(state: State<'_, AppState>, session_id: String) -> Result<(), CommandError> {
+    state.delete_session(session_id).map_err(CommandError::from)
 }
 
 #[tauri::command]

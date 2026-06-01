@@ -1,16 +1,17 @@
 import {
   NS_PER_SECOND,
   deriveKeys,
+  mergeLaneOrder,
   notesToEvents,
   timelineDurationNs,
   type NoteSpan,
 } from './timeline'
 import type { KeyName, SessionEvent } from './types'
 
-export const TIME_RULER_WIDTH = 96
+export const TIME_RULER_WIDTH = 85
 export const HEADER_HEIGHT = 0
-export const KEY_LANE_WIDTH = 118
-export const NOTE_WIDTH = 72
+export const KEY_LANE_WIDTH = 72
+export const NOTE_WIDTH = 56
 export const NOTE_HANDLE_HEIGHT = 6
 export const NOTE_MIN_HEIGHT = 14
 export const MIN_CANVAS_WIDTH = 760
@@ -49,8 +50,9 @@ export function timelineMetrics(
   events: readonly SessionEvent[],
   ghostEvents: readonly SessionEvent[],
   zoom: number,
+  laneOrder: readonly KeyName[] = [],
 ): TimelineMetrics {
-  const lanes = mergeLanes(deriveKeys([...events, ...ghostEvents]))
+  const lanes = mergeLanes(laneOrder, deriveKeys([...events, ...ghostEvents]))
   const durationNs = timelineDurationNs([...events, ...ghostEvents])
   const nsPerPixel = Math.max(50_000, NS_PER_SECOND / (125 * zoom))
   const laneCount = Math.max(1, lanes.length)
@@ -75,6 +77,14 @@ export function yToTimeNs(y: number, metrics: TimelineMetrics): number {
 
 export function laneToX(index: number): number {
   return TIME_RULER_WIDTH + index * KEY_LANE_WIDTH
+}
+
+export function laneAtX(x: number, metrics: TimelineMetrics): KeyName | null {
+  if (x < TIME_RULER_WIDTH) {
+    return null
+  }
+  const laneIndex = Math.floor((x - TIME_RULER_WIDTH) / KEY_LANE_WIDTH)
+  return metrics.lanes[laneIndex] ?? null
 }
 
 export function noteRect(note: NoteSpan, metrics: TimelineMetrics): NoteRect | null {
@@ -144,6 +154,9 @@ export function nextTimelineEvents(notes: readonly NoteSpan[]): readonly Session
   return notesToEvents(notes)
 }
 
-function mergeLanes(keys: readonly KeyName[]): readonly KeyName[] {
-  return keys.length > 0 ? keys : []
+function mergeLanes(
+  laneOrder: readonly KeyName[],
+  recordedKeys: readonly KeyName[],
+): readonly KeyName[] {
+  return mergeLaneOrder(laneOrder, recordedKeys)
 }
