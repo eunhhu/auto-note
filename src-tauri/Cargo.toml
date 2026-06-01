@@ -1,0 +1,27 @@
+[package]
+name = "auto-note-tauri"
+version = "0.1.0"
+edition = "2024"
+description = "Auto Note rhythm macro backend"
+license = "MIT"
+
+[lib]
+name = "auto_note_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.6", features = [] }
+
+[dependencies]
+chrono = { version = "0.4.42", features = ["serde"] }
+dirs = "6.0.0"
+enigo = "0.6.1"
+keytap = "0.4.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+tauri = { version = "2.9.2", features = ["macos-private-api"] }
+thiserror = "2.0.17"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3.23.0"

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Auto Note",
+  "version": "0.1.0",
+  "identifier": "com.sunwoo.autonote",
+  "build": {
+    "beforeDevCommand": "bun run dev -- --host 127.0.0.1 --port 1420 --strictPort",
+    "beforeBuildCommand": "bun run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Auto Note",
+        "width": 1280,
+        "height": 820,
+        "resizable": true
+      },
+      {
+        "label": "replay-overlay",
+        "title": "Auto Note Overlay",
+        "url": "/?view=overlay",
+        "width": 1280,
+        "height": 180,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "resizable": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}
