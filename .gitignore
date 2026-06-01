@@ -23,6 +23,8 @@ plans
 .debug-journal.md
 src/canvas.example.tsx
 src-tauri/gen
+src-tauri/icons/android
+src-tauri/icons/ios
 
 # Editor directories and files
 .vscode/*
