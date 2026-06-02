@@ -9,9 +9,13 @@ use crate::{
 pub struct RecordingReducer {
     hotkey: String,
     recording: bool,
+    paused: bool,
+    pause_started_ns: u64,
+    paused_total_ns: u64,
     started_at_ns: u64,
     record_offset_ns: u64,
     key_states: HashMap<String, bool>,
+    recorded_keys: HashMap<String, RecordedKey>,
     events: Vec<SessionEvent>,
 }
 
@@ -20,9 +24,13 @@ impl RecordingReducer {
         Self {
             hotkey: "F10".to_string(),
             recording: false,
+            paused: false,
+            pause_started_ns: 0,
+            paused_total_ns: 0,
             started_at_ns: 0,
             record_offset_ns: 0,
             key_states: HashMap::new(),
+            recorded_keys: HashMap::new(),
             events: vec![],
         }
     }
@@ -47,6 +55,10 @@ impl RecordingReducer {
         self.recording
     }
 
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
     pub fn live_events(&self) -> Vec<SessionEvent> {
         self.events.clone()
     }
@@ -60,8 +72,12 @@ impl RecordingReducer {
             return Err(AppError::State("already recording".to_string()));
         }
         self.recording = true;
+        self.paused = false;
+        self.pause_started_ns = 0;
+        self.paused_total_ns = 0;
         self.started_at_ns = now_ns;
         self.record_offset_ns = offset_ns;
+        self.recorded_keys.clear();
         self.events.clear();
         Ok(())
     }
@@ -71,7 +87,38 @@ impl RecordingReducer {
             return Err(AppError::State("recording is not active".to_string()));
         }
         self.recording = false;
+        self.paused = false;
+        self.recorded_keys.clear();
         Ok(self.events.clone())
+    }
+
+    pub fn pause(&mut self, now_ns: u64) -> Result<(), AppError> {
+        if !self.recording {
+            return Err(AppError::State("recording is not active".to_string()));
+        }
+        if self.paused {
+            return Ok(());
+        }
+        self.release_recorded_keys(self.event_time(now_ns));
+        self.paused = true;
+        self.pause_started_ns = now_ns;
+        Ok(())
+    }
+
+    pub fn resume(&mut self, now_ns: u64) -> Result<(), AppError> {
+        if !self.recording {
+            return Err(AppError::State("recording is not active".to_string()));
+        }
+        if !self.paused {
+            return Ok(());
+        }
+        self.paused_total_ns = self
+            .paused_total_ns
+            .saturating_add(now_ns.saturating_sub(self.pause_started_ns));
+        self.pause_started_ns = 0;
+        self.paused = false;
+        self.press_current_keys(self.event_time(now_ns));
+        Ok(())
     }
 
     pub fn on_key_event(&mut self, now_ns: u64, key: RecordedKey, action: KeyAction) {
@@ -81,76 +128,70 @@ impl RecordingReducer {
         if previous_pressed == next_pressed {
             return;
         }
-        self.key_states.insert(key_name, next_pressed);
-        if self.recording {
-            let elapsed_ns = now_ns.saturating_sub(self.started_at_ns);
-            let t_ns = self.record_offset_ns.saturating_add(elapsed_ns);
-            self.events.push(SessionEvent { t_ns, key, action });
+        self.key_states.insert(key_name.clone(), next_pressed);
+        if self.recording && !self.paused {
+            self.record_edge(self.event_time(now_ns), key_name, key, action);
+        }
+    }
+
+    fn event_time(&self, now_ns: u64) -> u64 {
+        let elapsed_ns = now_ns.saturating_sub(self.started_at_ns);
+        self.record_offset_ns
+            .saturating_add(elapsed_ns.saturating_sub(self.paused_total_ns))
+    }
+
+    fn record_edge(&mut self, t_ns: u64, key_name: String, key: RecordedKey, action: KeyAction) {
+        match action {
+            KeyAction::Press => {
+                self.recorded_keys.insert(key_name, key.clone());
+                self.events.push(SessionEvent { t_ns, key, action });
+            }
+            KeyAction::Release => {
+                if self.recorded_keys.remove(&key_name).is_some() {
+                    self.events.push(SessionEvent { t_ns, key, action });
+                }
+            }
+        }
+    }
+
+    fn release_recorded_keys(&mut self, t_ns: u64) {
+        let mut keys = self
+            .recorded_keys
+            .drain()
+            .map(|(_, key)| key)
+            .collect::<Vec<_>>();
+        keys.sort();
+        self.events.extend(keys.into_iter().map(|key| SessionEvent {
+            t_ns,
+            key,
+            action: KeyAction::Release,
+        }));
+    }
+
+    fn press_current_keys(&mut self, t_ns: u64) {
+        let mut key_names = self
+            .key_states
+            .iter()
+            .filter_map(|(key, down)| down.then_some(key.clone()))
+            .collect::<Vec<_>>();
+        key_names.sort();
+        for key_name in key_names {
+            if self.recorded_keys.contains_key(&key_name) {
+                continue;
+            }
+            let Ok(key) = RecordedKey::new(key_name.clone()) else {
+                continue;
+            };
+            self.recorded_keys.insert(key_name, key.clone());
+            self.events.push(SessionEvent {
+                t_ns,
+                key,
+                action: KeyAction::Press,
+            });
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::model::{KeyAction, RecordedKey};
-
-    use super::RecordingReducer;
-
-    fn key(name: &str) -> RecordedKey {
-        RecordedKey::new(name).expect("valid key")
-    }
-
-    #[test]
-    fn updates_state_even_when_not_recording() {
-        let mut reducer = RecordingReducer::new();
-        reducer.on_key_event(100, key("S"), KeyAction::Press);
-        let states = reducer.key_states();
-        assert_eq!(states.get("S"), Some(&true));
-    }
-
-    #[test]
-    fn records_only_while_active() {
-        let mut reducer = RecordingReducer::new();
-        reducer.on_key_event(100, key("S"), KeyAction::Press);
-        reducer.start(200).expect("start");
-        reducer.on_key_event(250, key("D"), KeyAction::Press);
-        reducer.on_key_event(300, key("D"), KeyAction::Release);
-        let events = reducer.stop().expect("stop");
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].t_ns, 50);
-        assert_eq!(events[1].t_ns, 100);
-    }
-
-    #[test]
-    fn records_with_middle_offset_when_started_at_cursor() {
-        let mut reducer = RecordingReducer::new();
-        reducer.start_at(1_000, 2_500).expect("start at offset");
-        reducer.on_key_event(1_025, key("D"), KeyAction::Press);
-        reducer.on_key_event(1_040, key("D"), KeyAction::Release);
-        let events = reducer.stop().expect("stop");
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].t_ns, 2_525);
-        assert_eq!(events[1].t_ns, 2_540);
-    }
-
-    #[test]
-    fn ignores_duplicate_edges() {
-        let mut reducer = RecordingReducer::new();
-        reducer.start(10).expect("start");
-        reducer.on_key_event(20, key("A"), KeyAction::Press);
-        reducer.on_key_event(21, key("A"), KeyAction::Press);
-        reducer.on_key_event(30, key("A"), KeyAction::Release);
-        let events = reducer.stop().expect("stop");
-        assert_eq!(events.len(), 2);
-    }
-
-    #[test]
-    fn exposes_live_events_while_recording() {
-        let mut reducer = RecordingReducer::new();
-        reducer.start(10).expect("start");
-        reducer.on_key_event(20, key("A"), KeyAction::Press);
-        let live = reducer.live_events();
-        assert_eq!(live.len(), 1);
-        assert_eq!(live[0].t_ns, 10);
-    }
-}
+#[path = "recording_tests.rs"]
+mod tests;
