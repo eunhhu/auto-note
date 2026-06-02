@@ -23,6 +23,7 @@ type Props = {
   readonly cursorNs: number
   readonly ghostCount: number
   readonly followPlayback: boolean
+  readonly gridSnapEnabled: boolean
   readonly isPlaying: boolean
   readonly isPlaybackPaused: boolean
   readonly selectedCount: number
@@ -39,6 +40,7 @@ type Props = {
   readonly onStopPlayback: () => void
   readonly onToggleFollowPlayback: () => void
   readonly onToggleGhostNotes: () => void
+  readonly onToggleGridSnap: () => void
   readonly onZoomIn: () => void
   readonly onZoomOut: () => void
 }
@@ -56,6 +58,7 @@ export function NoteCanvasToolbar(props: Props) {
       ? 'ON'
       : 'none'
     : 'hidden'
+  const gridSnapLabel = props.gridSnapEnabled ? 'Disable grid snap' : 'Enable grid snap'
   return (
     <div className="canvas-editor-chrome">
       <div className="canvas-primary-toolbar">
@@ -89,11 +92,19 @@ export function NoteCanvasToolbar(props: Props) {
         </div>
 
         <div className="canvas-toolbar-group center">
-          <span className="canvas-mode-badge">
+          <button
+            type="button"
+            aria-label={gridSnapLabel}
+            className={props.gridSnapEnabled ? 'icon-button active' : 'icon-button'}
+            onClick={props.onToggleGridSnap}
+            title={gridSnapLabel}
+          >
             <Grid3X3 size={14} />
-            Grid visual only
+            <span>Snap {props.gridSnapEnabled ? 'ON' : 'OFF'}</span>
+          </button>
+          <span className={props.gridSnapEnabled ? 'canvas-mode-badge snap-active' : 'canvas-mode-badge raw'}>
+            {props.gridSnapEnabled ? 'Move/create grid' : 'Raw ns edit'}
           </span>
-          <span className="canvas-mode-badge raw">Raw ns edit</span>
         </div>
 
         <div className="canvas-toolbar-group">

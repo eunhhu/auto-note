@@ -100,6 +100,33 @@ test('replay can pause, resume, and stop without stale UI', async ({ page }) => 
   await expect(page.getByText('Playing: OFF')).toBeVisible()
 })
 
+test('timeline grid snap toggle quantizes alt-click note creation', async ({ page }) => {
+  await page.goto('/')
+  const payload = {
+    schema_version: 2,
+    id: 'snap-session',
+    name: 'Snap Session',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    keys: ['Q'],
+    bpm: 180,
+    offset_ms: 0,
+    events: [
+      { t_ns: 100_000_000, key: 'Q', action: 'press' },
+      { t_ns: 300_000_000, key: 'Q', action: 'release' },
+    ],
+  }
+  await page.getByRole('textbox').nth(1).fill(JSON.stringify(payload))
+  await page.getByRole('button', { name: 'Import JSON' }).click()
+  await page.getByRole('button', { name: 'Enable grid snap' }).click()
+  await expect(page.getByRole('button', { name: 'Disable grid snap' })).toBeVisible()
+
+  await page.getByTestId('note-canvas').click({ position: { x: 120, y: 160 }, modifiers: ['Alt'] })
+
+  await expect(page.getByLabel('Press ns')).toHaveValue('1249999995')
+  await expect(page.getByLabel('Release ns')).toHaveValue('1369999995')
+})
+
 test('timeline paints the bottom edge after scrolling long canvases', async ({ page }) => {
   await page.goto('/')
   const payload = {

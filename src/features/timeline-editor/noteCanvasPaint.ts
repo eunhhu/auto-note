@@ -9,9 +9,10 @@ import {
   yToTimeNs,
   type TimelineMetrics,
 } from '@/features/timeline-editor/noteCanvasModel'
+import { gridStepNs } from '@/features/timeline-editor/noteCanvasGrid'
 import type { MarqueeRect } from '@/features/timeline-editor/noteCanvasInteraction'
 import { isYInPaintRange, paintRangeForViewport, type PaintRange } from '@/features/timeline-editor/noteCanvasPaintRange'
-import { NS_PER_SECOND, msToNs, nsToMs, type NoteSpan } from '@/lib/timeline'
+import { msToNs, nsToMs, type NoteSpan } from '@/lib/timeline'
 
 type DrawArgs = {
   readonly bpm: number
@@ -44,8 +45,7 @@ export function drawTimeline(context: CanvasRenderingContext2D, args: DrawArgs):
 
 function drawGrid(context: CanvasRenderingContext2D, args: DrawArgs): void {
   const { metrics } = args
-  const beatNs = Math.max(1, Math.round(NS_PER_SECOND * (60 / Math.max(1, args.bpm))))
-  const stepNs = Math.round(beatNs / 4)
+  const stepNs = gridStepNs(args.bpm)
   const offsetNs = msToNs(args.offsetMs)
   const firstVisibleNs = yToTimeNs(args.viewportTop - 120, metrics)
   const lastVisibleNs = yToTimeNs(args.viewportBottom + 160, metrics)

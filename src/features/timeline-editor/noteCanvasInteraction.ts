@@ -1,7 +1,13 @@
 import type { KeyboardEvent, PointerEvent } from 'react'
 
-import { laneAtX, noteRect, type TimelineMetrics } from '@/features/timeline-editor/noteCanvasModel'
-import type { NoteEdge, NoteSpan } from '@/lib/timeline'
+import {
+  laneAtX,
+  noteRect,
+  type TimelineMetrics,
+} from '@/features/timeline-editor/noteCanvasModel'
+import { snapTimeToGrid } from '@/features/timeline-editor/noteCanvasGrid'
+import { ARROW_MOVE_NS, moveNotes, moveNotesAcrossLanes, type NoteEdge, type NoteSpan } from '@/lib/timeline'
+import type { KeyName } from '@/lib/types'
 
 export type CanvasPoint = {
   readonly x: number
@@ -39,6 +45,28 @@ export type DragState =
       readonly origin: CanvasPoint
       readonly originSelection: ReadonlySet<string>
     }
+
+export type SnapMoveArgs = {
+  readonly bpm: number
+  readonly offsetMs: number
+  readonly originStartNs: number
+  readonly rawDeltaNs: number
+}
+
+export function snappedMoveDeltaNs(args: SnapMoveArgs): number {
+  return snapTimeToGrid(args.originStartNs + args.rawDeltaNs, args.bpm, args.offsetMs) - args.originStartNs
+}
+
+export function canvasPointFromPointer(
+  event: PointerEvent<HTMLCanvasElement>,
+  metrics: TimelineMetrics,
+): CanvasPoint {
+  const rect = event.currentTarget.getBoundingClientRect()
+  return {
+    x: (event.clientX - rect.left) * (metrics.width / rect.width),
+    y: (event.clientY - rect.top) * (metrics.height / rect.height),
+  }
+}
 
 export function marqueeRect(origin: CanvasPoint, current: CanvasPoint): MarqueeRect {
   const x = Math.min(origin.x, current.x)
@@ -158,4 +186,21 @@ export function handleClipboardKey(
     return true
   }
   return false
+}
+
+export function movedNotesAfterArrowKey(
+  event: KeyboardEvent<HTMLCanvasElement>,
+  notes: readonly NoteSpan[],
+  selected: ReadonlySet<string>,
+  lanes: readonly KeyName[],
+): readonly NoteSpan[] | null {
+  if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    return moveNotes(notes, selected, event.key === 'ArrowUp' ? -ARROW_MOVE_NS : ARROW_MOVE_NS)
+  }
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    return moveNotesAcrossLanes(notes, selected, 0, event.key === 'ArrowLeft' ? -1 : 1, lanes)
+  }
+  return null
 }

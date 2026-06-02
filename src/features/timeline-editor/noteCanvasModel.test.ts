@@ -17,6 +17,7 @@ import {
   visibleNotesInViewport,
   yToTimeNs,
 } from '@/features/timeline-editor/noteCanvasModel'
+import { snapTimeToGrid } from '@/features/timeline-editor/noteCanvasGrid'
 import { msToNs } from '@/lib/timeline'
 import type { SessionEvent } from '@/lib/types'
 
@@ -211,5 +212,10 @@ describe('vertical timeline canvas model', () => {
     )
 
     expect(hit).toEqual({ kind: 'note', note: target })
+  })
+
+  it('snaps raw times to the visible bpm grid when explicitly enabled', () => {
+    expect(snapTimeToGrid(msToNs(1_280), 180, 0)).toBe(1_249_999_995)
+    expect(snapTimeToGrid(msToNs(84), 180, 10)).toBe(73_333_333)
   })
 })

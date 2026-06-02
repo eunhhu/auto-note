@@ -21,3 +21,7 @@ export type NoteCanvasControllerProps = {
   readonly onStopPlayback: () => void
   readonly onToggleGhostNotes: () => void
 }
+
+export type NoteCanvasControllerOptions = {
+  readonly gridSnapEnabled: boolean
+}

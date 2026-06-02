@@ -13,9 +13,10 @@ import type { KeyName } from '@/lib/types'
 type Props = NoteCanvasControllerProps
 
 export function NoteCanvas(props: Props) {
-  const controller = useNoteCanvasController(props)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [followPlayback, setFollowPlayback] = useState(true)
+  const [gridSnapEnabled, setGridSnapEnabled] = useState(false)
+  const controller = useNoteCanvasController(props, { gridSnapEnabled })
   const recordedLaneSet = new Set(props.events.map((event) => event.key))
   usePlaybackTimelineScroll({
     cursorNs: props.cursorNs,
@@ -36,6 +37,7 @@ export function NoteCanvas(props: Props) {
         cursorNs={props.cursorNs}
         followPlayback={followPlayback}
         ghostCount={props.ghostEventCount}
+        gridSnapEnabled={gridSnapEnabled}
         showGhostNotes={props.showGhostNotes}
         isPlaying={props.isPlaying}
         isPlaybackPaused={props.isPlaybackPaused}
@@ -50,6 +52,7 @@ export function NoteCanvas(props: Props) {
         onResetCursor={controller.toolbarActions.resetCursor}
         onStopPlayback={props.onStopPlayback}
         onToggleFollowPlayback={() => setFollowPlayback((value) => !value)}
+        onToggleGridSnap={() => setGridSnapEnabled((value) => !value)}
         onResumePlayback={props.onResumePlayback}
         onToggleGhostNotes={props.onToggleGhostNotes}
         onZoomIn={controller.toolbarActions.zoomIn}
