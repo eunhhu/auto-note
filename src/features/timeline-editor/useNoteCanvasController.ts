@@ -10,35 +10,44 @@ import {
   yToTimeNs,
   type TimelineMetrics,
 } from '@/features/timeline-editor/noteCanvasModel'
+import { snapTimeToGrid } from '@/features/timeline-editor/noteCanvasGrid'
 import {
+  canvasPointFromPointer,
   handleClipboardKey,
-  laneDeltaFromPoint,
   marqueeRect,
   mergeMarqueeSelection,
+  movedNotesAfterArrowKey,
   noteSelectionAfterPointer,
   selectNotesInMarquee,
   type CanvasPoint,
   type DragState,
   type MarqueeRect,
 } from '@/features/timeline-editor/noteCanvasInteraction'
+import {
+  moveDraggedNotesResult,
+  resizeDraggedNoteResult,
+} from '@/features/timeline-editor/noteCanvasMutation'
 import { remapSelection } from '@/features/timeline-editor/noteSelection'
 import {
-  ARROW_MOVE_NS,
   createNoteSpan,
   deleteNotes,
   eventsToNotes,
-  moveNotes,
-  moveNotesAcrossLanes,
   notesToEvents,
   pasteNotes,
   resizeNote,
   type NoteEdge,
   type NoteSpan,
 } from '@/lib/timeline'
-import type { NoteCanvasControllerProps } from '@/features/timeline-editor/noteCanvasProps'
+import type {
+  NoteCanvasControllerOptions,
+  NoteCanvasControllerProps,
+} from '@/features/timeline-editor/noteCanvasProps'
 import { useNoteCanvasPainter } from '@/features/timeline-editor/useNoteCanvasPainter'
 
-export function useNoteCanvasController(props: NoteCanvasControllerProps) {
+export function useNoteCanvasController(
+  props: NoteCanvasControllerProps,
+  options: NoteCanvasControllerOptions,
+) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -59,20 +68,12 @@ export function useNoteCanvasController(props: NoteCanvasControllerProps) {
 
   useNoteCanvasPainter({ canvasRef, ghostNotes, marquee, metrics, notes, props, selected })
 
-  function point(event: PointerEvent<HTMLCanvasElement>): CanvasPoint {
-    const rect = event.currentTarget.getBoundingClientRect()
-    return {
-      x: (event.clientX - rect.left) * (metrics.width / rect.width),
-      y: (event.clientY - rect.top) * (metrics.height / rect.height),
-    }
-  }
-
   function commitNotes(next: readonly NoteSpan[]): void {
     props.onEventsChange(notesToEvents(next))
   }
 
   function handlePointerDown(event: PointerEvent<HTMLCanvasElement>): void {
-    const target = point(event)
+    const target = canvasPointFromPointer(event, metrics)
     event.currentTarget.focus()
     event.currentTarget.setPointerCapture(event.pointerId)
     if (target.x < TIME_RULER_WIDTH) {
@@ -117,10 +118,14 @@ export function useNoteCanvasController(props: NoteCanvasControllerProps) {
   ): void {
     const lane = laneAtX(target.x, currentMetrics)
     if (event.altKey && lane) {
-      const newNote = createNoteSpan(lane, timeNs, notes.length)
+      const startNs = options.gridSnapEnabled
+        ? snapTimeToGrid(timeNs, props.bpm, props.offsetMs)
+        : timeNs
+      const newNote = createNoteSpan(lane, startNs, notes.length)
       const next = [...notes, newNote]
       commitNotes(next)
       setSelected(remapSelection(next, [newNote]))
+      props.onCursorChange(newNote.start_ns)
       dragRef.current = { edge: 'end', kind: 'resize', noteId: newNote.id, originNotes: next }
       return
     }
@@ -143,7 +148,7 @@ export function useNoteCanvasController(props: NoteCanvasControllerProps) {
     if (!drag) {
       return
     }
-    const target = point(event)
+    const target = canvasPointFromPointer(event, metrics)
     if (drag.kind === 'cursor') {
       props.onCursorChange(yToTimeNs(target.y, metrics))
       return
@@ -163,22 +168,22 @@ export function useNoteCanvasController(props: NoteCanvasControllerProps) {
   }
 
   function resizeDraggedNote(drag: Extract<DragState, { readonly kind: 'resize' }>, target: CanvasPoint): void {
-    const resized = resizeNote(drag.originNotes, drag.noteId, drag.edge, yToTimeNs(target.y, metrics))
-    const targetNotes = resized.filter((note) => note.id === drag.noteId)
-    commitNotes(resized)
-    setSelected(remapSelection(resized, targetNotes))
-    const resizedNote = targetNotes[0]
-    if (resizedNote) {
-      props.onCursorChange(drag.edge === 'start' ? resizedNote.start_ns : resizedNote.end_ns)
+    const result = resizeDraggedNoteResult(drag, yToTimeNs(target.y, metrics))
+    commitNotes(result.notes)
+    setSelected(remapSelection(result.notes, result.targetNotes))
+    if (result.cursorNs !== null) {
+      props.onCursorChange(result.cursorNs)
     }
   }
 
   function moveDraggedNotes(drag: Extract<DragState, { readonly kind: 'move' }>, target: CanvasPoint): void {
-    const originNote = drag.originNotes.find((note) => note.id === drag.targetNoteId)
-    const deltaNs = yToTimeNs(target.y, metrics) - yToTimeNs(drag.origin.y, metrics)
-    const laneDelta = originNote ? laneDeltaFromPoint(originNote, target.x, metrics) : 0
+    const rawDeltaNs = yToTimeNs(target.y, metrics) - yToTimeNs(drag.origin.y, metrics)
     commitMovedSelection(
-      moveNotesAcrossLanes(drag.originNotes, drag.originSelection, deltaNs, laneDelta, metrics.lanes),
+      moveDraggedNotesResult(drag, target, rawDeltaNs, metrics, {
+        bpm: props.bpm,
+        enabled: options.gridSnapEnabled,
+        offsetMs: props.offsetMs,
+      }),
     )
   }
 
@@ -194,7 +199,10 @@ export function useNoteCanvasController(props: NoteCanvasControllerProps) {
   }
 
   function pasteClipboard(): void {
-    const pasted = pasteNotes(clipboard, props.cursorNs)
+    const targetNs = options.gridSnapEnabled
+      ? snapTimeToGrid(props.cursorNs, props.bpm, props.offsetMs)
+      : props.cursorNs
+    const pasted = pasteNotes(clipboard, targetNs)
     const next = [...notes, ...pasted]
     commitNotes(next)
     setSelected(remapSelection(next, pasted))
@@ -215,14 +223,9 @@ export function useNoteCanvasController(props: NoteCanvasControllerProps) {
     if (handleClipboardKey(event, notes, selected, clipboard, setClipboard, deleteSelected, pasteClipboard)) {
       return
     }
-    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      event.preventDefault()
-      commitMovedSelection(moveNotes(notes, selected, event.key === 'ArrowUp' ? -ARROW_MOVE_NS : ARROW_MOVE_NS))
-      return
-    }
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      event.preventDefault()
-      commitMovedSelection(moveNotesAcrossLanes(notes, selected, 0, event.key === 'ArrowLeft' ? -1 : 1, metrics.lanes))
+    const moved = movedNotesAfterArrowKey(event, notes, selected, metrics.lanes)
+    if (moved) {
+      commitMovedSelection(moved)
     }
   }
 
