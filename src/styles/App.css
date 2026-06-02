@@ -1,0 +1,265 @@
+.app {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    height: 100dvh;
+    min-width: 0;
+    padding-top: 38px;
+    background: #101114;
+    color: #edf0f5;
+}
+
+.panel {
+    min-width: 0;
+    border-right: 1px solid #2c3038;
+    background: #181a1f;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.panel h1,
+.panel h2 {
+    margin: 0;
+    letter-spacing: 0;
+}
+
+.panel h1 {
+    font-size: 22px;
+}
+
+.panel h2 {
+    font-size: 13px;
+    color: #b7bdc8;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 22px;
+}
+
+.button-row,
+.statusbar,
+.summary-strip,
+.timeline-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    color: #b7bdc8;
+    font-size: 12px;
+}
+
+input,
+textarea,
+button {
+    font: inherit;
+}
+
+input,
+textarea {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid #343945;
+    border-radius: 6px;
+    background: #101114;
+    color: #edf0f5;
+    padding: 6px;
+}
+
+button {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid #3b414d;
+    border-radius: 6px;
+    background: #20242b;
+    color: #edf0f5;
+    cursor: pointer;
+    padding: 6px 10px;
+}
+
+button:hover:not(:disabled) {
+    border-color: #65d6c8;
+}
+
+button:disabled {
+    color: #727986;
+    cursor: default;
+}
+
+button.primary {
+    background: #c94b5d;
+    border-color: #e06475;
+}
+
+.capture.active {
+    border-color: #f5d76e;
+    color: #f5d76e;
+}
+
+.workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px;
+}
+
+.statusbar,
+.summary-strip {
+    border-bottom: 1px solid #282d35;
+    color: #cfd4dd;
+    font-size: 12px;
+    min-height: 34px;
+}
+
+.summary-strip {
+    color: #8f98a8;
+}
+
+.key {
+    min-width: 30px;
+    border: 1px solid #3b414d;
+    border-radius: 6px;
+    background: #20242b;
+    padding: 4px 8px;
+    text-align: center;
+}
+
+.key.on {
+    border-color: #65d6c8;
+    background: #184640;
+    color: #aaf4eb;
+}
+
+.key.muted {
+    color: #727986;
+}
+
+.sessions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.session-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 6px;
+}
+
+.session {
+    justify-content: flex-start;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session.active {
+    border-color: #65d6c8;
+    background: #17302f;
+}
+
+.session-delete {
+    min-width: 34px;
+    padding: 0;
+}
+
+.session-delete:hover:not(:disabled) {
+    border-color: #fb7185;
+    color: #fecdd3;
+}
+
+.error {
+    color: #ff7b8f;
+    font-size: 13px;
+}
+
+.overlay-root {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: flex-end;
+    padding: 18px 24px;
+    color: #edf0f5;
+    background: transparent;
+    pointer-events: none;
+}
+
+.overlay-rail {
+    width: 100%;
+    min-height: 72px;
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr) 220px;
+    align-items: center;
+    gap: 18px;
+    border-top: 1px solid rgb(101 214 200 / 65%);
+    background: rgb(16 17 20 / 58%);
+    box-shadow: 0 -12px 30px rgb(0 0 0 / 35%);
+    backdrop-filter: blur(10px);
+    padding: 12px 18px;
+    font-size: 13px;
+}
+
+.overlay-rail > div {
+    min-width: 0;
+}
+
+.overlay-led {
+    width: 9px;
+    height: 9px;
+    display: inline-block;
+    margin-right: 8px;
+    border-radius: 50%;
+    background: #727986;
+}
+
+.overlay-led.on {
+    background: #65d6c8;
+    box-shadow: 0 0 14px #65d6c8;
+}
+
+.overlay-keys {
+    display: flex;
+    min-width: 0;
+    gap: 8px;
+    overflow: hidden;
+}
+
+.overlay-keys span {
+    min-width: 34px;
+    border: 1px solid rgb(237 240 245 / 30%);
+    border-radius: 6px;
+    background: rgb(101 214 200 / 18%);
+    padding: 6px 10px;
+    text-align: center;
+}
+
+@media (max-width: 980px) {
+    .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(240px, 42vh) minmax(0, 1fr);
+    }
+
+    .panel {
+        border-right: 0;
+        border-bottom: 1px solid #2c3038;
+    }
+
+    .overlay-rail {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}

@@ -33,6 +33,16 @@ pub fn stop_recording(
 }
 
 #[tauri::command]
+pub fn pause_recording(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state.pause_recording().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn resume_recording(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state.resume_recording().map_err(CommandError::from)
+}
+
+#[tauri::command]
 pub fn play_session(state: State<'_, AppState>, session_id: String) -> Result<(), CommandError> {
     state.play_session(session_id).map_err(CommandError::from)
 }
@@ -40,6 +50,16 @@ pub fn play_session(state: State<'_, AppState>, session_id: String) -> Result<()
 #[tauri::command]
 pub fn stop_playback(state: State<'_, AppState>) -> Result<(), CommandError> {
     state.stop_playback().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn pause_playback(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state.pause_playback().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn resume_playback(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state.resume_playback().map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -55,6 +75,13 @@ pub fn set_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), Comm
 #[tauri::command]
 pub fn set_play_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), CommandError> {
     state.set_play_hotkey(hotkey).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn set_punch_in_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), CommandError> {
+    state
+        .set_punch_in_hotkey(hotkey)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]

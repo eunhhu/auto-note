@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use serde::Serialize;
@@ -20,6 +20,65 @@ pub trait PlaybackSink: Send {
     fn key_release(&mut self, key: &RecordedKey) -> Result<(), AppError>;
 }
 
+#[derive(Debug)]
+pub struct PlaybackControl {
+    cancel: AtomicBool,
+    paused: AtomicBool,
+    pause_started_ns: AtomicU64,
+    paused_total_ns: AtomicU64,
+}
+
+impl PlaybackControl {
+    pub fn new() -> Self {
+        Self {
+            cancel: AtomicBool::new(false),
+            paused: AtomicBool::new(false),
+            pause_started_ns: AtomicU64::new(0),
+            paused_total_ns: AtomicU64::new(0),
+        }
+    }
+
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Acquire)
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Acquire)
+    }
+
+    pub fn pause_at(&self, now_ns: u64) {
+        if !self.paused.swap(true, Ordering::AcqRel) {
+            self.pause_started_ns.store(now_ns, Ordering::Release);
+        }
+    }
+
+    pub fn resume_at(&self, now_ns: u64) {
+        if self.paused.swap(false, Ordering::AcqRel) {
+            let started = self.pause_started_ns.swap(0, Ordering::AcqRel);
+            self.paused_total_ns
+                .fetch_add(now_ns.saturating_sub(started), Ordering::AcqRel);
+        }
+    }
+
+    pub fn elapsed_since(&self, started_at_ns: u64, now_ns: u64) -> u64 {
+        now_ns
+            .saturating_sub(started_at_ns)
+            .saturating_sub(self.paused_total_at(now_ns))
+    }
+
+    fn paused_total_at(&self, now_ns: u64) -> u64 {
+        let total = self.paused_total_ns.load(Ordering::Acquire);
+        if !self.is_paused() {
+            return total;
+        }
+        total.saturating_add(now_ns.saturating_sub(self.pause_started_ns.load(Ordering::Acquire)))
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PlaybackReport {
     pub max_drift_ns: u64,
@@ -29,7 +88,7 @@ pub struct PlaybackReport {
 
 pub fn play_session(
     session: &Session,
-    cancel: &AtomicBool,
+    control: &PlaybackControl,
     clock: &mut dyn PlaybackClock,
     sink: &mut dyn PlaybackSink,
 ) -> Result<PlaybackReport, AppError> {
@@ -43,7 +102,7 @@ pub fn play_session(
     let mut emitted_events = 0_usize;
 
     for event in &session.events {
-        if cancel.load(Ordering::Relaxed) {
+        if control.is_cancelled() {
             release_held(&held, sink)?;
             return Ok(PlaybackReport {
                 max_drift_ns,
@@ -52,9 +111,16 @@ pub fn play_session(
             });
         }
 
-        let target = start.saturating_add(event.t_ns);
-        clock.sleep_until_ns(target);
+        if !wait_until_event_time(control, clock, start, event.t_ns) {
+            release_held(&held, sink)?;
+            return Ok(PlaybackReport {
+                max_drift_ns,
+                emitted_events,
+                cancelled: true,
+            });
+        }
         let now = clock.now_ns();
+        let target = playback_target_ns(control, start, event.t_ns, now);
         let drift = now.abs_diff(target);
         max_drift_ns = max_drift_ns.max(drift);
 
@@ -79,6 +145,36 @@ pub fn play_session(
     })
 }
 
+fn wait_until_event_time(
+    control: &PlaybackControl,
+    clock: &mut dyn PlaybackClock,
+    start_ns: u64,
+    event_ns: u64,
+) -> bool {
+    loop {
+        if control.is_cancelled() {
+            return false;
+        }
+        let now = clock.now_ns();
+        if control.is_paused() {
+            clock.sleep_until_ns(now.saturating_add(1_000_000));
+            continue;
+        }
+        let target = playback_target_ns(control, start_ns, event_ns, now);
+        if now >= target {
+            return true;
+        }
+        let wait_ns = target - now;
+        clock.sleep_until_ns(now.saturating_add(wait_ns.min(1_000_000)));
+    }
+}
+
+fn playback_target_ns(control: &PlaybackControl, start_ns: u64, event_ns: u64, now_ns: u64) -> u64 {
+    start_ns
+        .saturating_add(event_ns)
+        .saturating_add(control.paused_total_at(now_ns))
+}
+
 fn release_held(held: &HashSet<RecordedKey>, sink: &mut dyn PlaybackSink) -> Result<(), AppError> {
     for key in held {
         sink.key_release(key)?;
@@ -87,124 +183,5 @@ fn release_held(held: &HashSet<RecordedKey>, sink: &mut dyn PlaybackSink) -> Res
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::atomic::AtomicBool;
-
-    use crate::model::{KeyAction, RecordedKey, Session, SessionEvent};
-
-    use super::{AppError, PlaybackClock, PlaybackSink, play_session};
-
-    struct FakeClock {
-        now: u64,
-    }
-
-    impl PlaybackClock for FakeClock {
-        fn now_ns(&self) -> u64 {
-            self.now
-        }
-
-        fn sleep_until_ns(&mut self, target_ns: u64) {
-            self.now = target_ns;
-        }
-    }
-
-    struct FakeSink {
-        events: Vec<(RecordedKey, KeyAction)>,
-    }
-
-    impl PlaybackSink for FakeSink {
-        fn key_press(&mut self, key: &RecordedKey) -> Result<(), AppError> {
-            self.events.push((key.clone(), KeyAction::Press));
-            Ok(())
-        }
-
-        fn key_release(&mut self, key: &RecordedKey) -> Result<(), AppError> {
-            self.events.push((key.clone(), KeyAction::Release));
-            Ok(())
-        }
-    }
-
-    fn key(name: &str) -> RecordedKey {
-        RecordedKey::new(name).expect("valid key")
-    }
-
-    fn sample_session() -> Session {
-        Session::new(
-            "sample".to_string(),
-            150.0,
-            0,
-            vec![
-                SessionEvent {
-                    t_ns: 10,
-                    key: key("S"),
-                    action: KeyAction::Press,
-                },
-                SessionEvent {
-                    t_ns: 20,
-                    key: key("S"),
-                    action: KeyAction::Release,
-                },
-            ],
-        )
-    }
-
-    #[test]
-    fn empty_session_is_not_playable() {
-        let session = Session::new("sample".to_string(), 150.0, 0, vec![]);
-        let cancel = AtomicBool::new(false);
-        let mut clock = FakeClock { now: 0 };
-        let mut sink = FakeSink { events: vec![] };
-        let result = play_session(&session, &cancel, &mut clock, &mut sink);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn deterministic_playback_has_low_drift() {
-        let session = sample_session();
-        let cancel = AtomicBool::new(false);
-        let mut clock = FakeClock { now: 0 };
-        let mut sink = FakeSink { events: vec![] };
-        let report =
-            play_session(&session, &cancel, &mut clock, &mut sink).expect("playback should pass");
-        assert_eq!(report.max_drift_ns, 0);
-        assert_eq!(sink.events.len(), 2);
-    }
-
-    #[test]
-    fn visual_offset_does_not_change_replay_timing() {
-        let mut session = sample_session();
-        session.offset_ms = 50_000;
-        let cancel = AtomicBool::new(false);
-        let mut clock = FakeClock { now: 1_000 };
-        let mut sink = FakeSink { events: vec![] };
-        play_session(&session, &cancel, &mut clock, &mut sink).expect("playback should pass");
-        assert_eq!(clock.now, 1_020);
-    }
-
-    #[test]
-    fn cancellation_releases_held_keys() {
-        let session = Session::new(
-            "sample".to_string(),
-            150.0,
-            0,
-            vec![
-                SessionEvent {
-                    t_ns: 10,
-                    key: key("S"),
-                    action: KeyAction::Press,
-                },
-                SessionEvent {
-                    t_ns: 40,
-                    key: key("D"),
-                    action: KeyAction::Press,
-                },
-            ],
-        );
-        let cancel = AtomicBool::new(true);
-        let mut clock = FakeClock { now: 0 };
-        let mut sink = FakeSink { events: vec![] };
-        let report =
-            play_session(&session, &cancel, &mut clock, &mut sink).expect("playback should pass");
-        assert!(report.cancelled);
-    }
-}
+#[path = "playback_tests.rs"]
+mod tests;
