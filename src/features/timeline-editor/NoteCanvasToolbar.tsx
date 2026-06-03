@@ -14,63 +14,78 @@ import {
   Zap,
   ZoomIn,
   ZoomOut,
-} from 'lucide-react'
+} from "lucide-react";
 
-import { nsToMs } from '@/lib/timeline'
-
+import { nsToMs } from "@/lib/timeline";
+// for non stop commit hehe
 type Props = {
-  readonly clipboardCount: number
-  readonly cursorNs: number
-  readonly ghostCount: number
-  readonly followPlayback: boolean
-  readonly gridSnapEnabled: boolean
-  readonly isPlaying: boolean
-  readonly isPlaybackPaused: boolean
-  readonly selectedCount: number
-  readonly showGhostNotes: boolean
-  readonly zoom: number
-  readonly onCopy: () => void
-  readonly onCut: () => void
-  readonly onDelete: () => void
-  readonly onPaste: () => void
-  readonly onPausePlayback: () => void
-  readonly onPlay: () => void
-  readonly onResumePlayback: () => void
-  readonly onResetCursor: () => void
-  readonly onStopPlayback: () => void
-  readonly onToggleFollowPlayback: () => void
-  readonly onToggleGhostNotes: () => void
-  readonly onToggleGridSnap: () => void
-  readonly onZoomIn: () => void
-  readonly onZoomOut: () => void
-}
+  readonly clipboardCount: number;
+  readonly cursorNs: number;
+  readonly ghostCount: number;
+  readonly followPlayback: boolean;
+  readonly gridSnapEnabled: boolean;
+  readonly isPlaying: boolean;
+  readonly isPlaybackPaused: boolean;
+  readonly selectedCount: number;
+  readonly showGhostNotes: boolean;
+  readonly zoom: number;
+  readonly onCopy: () => void;
+  readonly onCut: () => void;
+  readonly onDelete: () => void;
+  readonly onPaste: () => void;
+  readonly onPausePlayback: () => void;
+  readonly onPlay: () => void;
+  readonly onResumePlayback: () => void;
+  readonly onResetCursor: () => void;
+  readonly onStopPlayback: () => void;
+  readonly onToggleFollowPlayback: () => void;
+  readonly onToggleGhostNotes: () => void;
+  readonly onToggleGridSnap: () => void;
+  readonly onZoomIn: () => void;
+  readonly onZoomOut: () => void;
+};
 
 export function NoteCanvasToolbar(props: Props) {
-  const canEditSelection = props.selectedCount > 0
-  const playbackButtonLabel = props.isPlaying ? 'Stop' : 'Play'
-  const playbackAriaLabel = props.isPlaying ? 'Canvas stop replay' : 'Canvas play session'
-  const playbackAction = props.isPlaying ? props.onStopPlayback : props.onPlay
-  const pauseButtonLabel = props.isPlaybackPaused ? 'Resume' : 'Pause'
-  const pauseAriaLabel = props.isPlaybackPaused ? 'Canvas resume replay' : 'Canvas pause replay'
-  const pauseAction = props.isPlaybackPaused ? props.onResumePlayback : props.onPausePlayback
+  const canEditSelection = props.selectedCount > 0;
+  const playbackButtonLabel = props.isPlaying ? "Stop" : "Play";
+  const playbackAriaLabel = props.isPlaying
+    ? "Canvas stop replay"
+    : "Canvas play session";
+  const playbackAction = props.isPlaying ? props.onStopPlayback : props.onPlay;
+  const pauseButtonLabel = props.isPlaybackPaused ? "Resume" : "Pause";
+  const pauseAriaLabel = props.isPlaybackPaused
+    ? "Canvas resume replay"
+    : "Canvas pause replay";
+  const pauseAction = props.isPlaybackPaused
+    ? props.onResumePlayback
+    : props.onPausePlayback;
   const ghostState = props.showGhostNotes
     ? props.ghostCount > 0
-      ? 'ON'
-      : 'none'
-    : 'hidden'
-  const gridSnapLabel = props.gridSnapEnabled ? 'Disable grid snap' : 'Enable grid snap'
+      ? "ON"
+      : "none"
+    : "hidden";
+  const gridSnapLabel = props.gridSnapEnabled
+    ? "Disable grid snap"
+    : "Enable grid snap";
   return (
     <div className="canvas-editor-chrome">
       <div className="canvas-primary-toolbar">
         <div className="canvas-toolbar-group">
-          <button type="button" className="icon-button" onClick={props.onResetCursor} title="Reset cursor">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={props.onResetCursor}
+            title="Reset cursor"
+          >
             <RotateCcw size={15} />
             <span>Reset</span>
           </button>
           <button
             type="button"
             aria-label={playbackAriaLabel}
-            className={props.isPlaying ? 'icon-button danger active' : 'icon-button play'}
+            className={
+              props.isPlaying ? "icon-button danger active" : "icon-button play"
+            }
             onClick={playbackAction}
             title={playbackAriaLabel}
           >
@@ -80,7 +95,9 @@ export function NoteCanvasToolbar(props: Props) {
           <button
             type="button"
             aria-label={pauseAriaLabel}
-            className={props.isPlaybackPaused ? 'icon-button active' : 'icon-button'}
+            className={
+              props.isPlaybackPaused ? "icon-button active" : "icon-button"
+            }
             disabled={!props.isPlaying}
             onClick={pauseAction}
             title={pauseAriaLabel}
@@ -95,32 +112,64 @@ export function NoteCanvasToolbar(props: Props) {
           <button
             type="button"
             aria-label={gridSnapLabel}
-            className={props.gridSnapEnabled ? 'icon-button active' : 'icon-button'}
+            className={
+              props.gridSnapEnabled ? "icon-button active" : "icon-button"
+            }
             onClick={props.onToggleGridSnap}
             title={gridSnapLabel}
           >
             <Grid3X3 size={14} />
-            <span>Snap {props.gridSnapEnabled ? 'ON' : 'OFF'}</span>
+            <span>Snap {props.gridSnapEnabled ? "ON" : "OFF"}</span>
           </button>
-          <span className={props.gridSnapEnabled ? 'canvas-mode-badge snap-active' : 'canvas-mode-badge raw'}>
-            {props.gridSnapEnabled ? 'Move/create grid' : 'Raw ns edit'}
+          <span
+            className={
+              props.gridSnapEnabled
+                ? "canvas-mode-badge snap-active"
+                : "canvas-mode-badge raw"
+            }
+          >
+            {props.gridSnapEnabled ? "Move/create grid" : "Raw ns edit"}
           </span>
         </div>
 
         <div className="canvas-toolbar-group">
-          <button type="button" className="icon-button" disabled={!canEditSelection} onClick={props.onCopy} title="Copy">
+          <button
+            type="button"
+            className="icon-button"
+            disabled={!canEditSelection}
+            onClick={props.onCopy}
+            title="Copy"
+          >
             <Copy size={14} />
             <span>Copy</span>
           </button>
-          <button type="button" className="icon-button" disabled={!canEditSelection} onClick={props.onCut} title="Cut">
+          <button
+            type="button"
+            className="icon-button"
+            disabled={!canEditSelection}
+            onClick={props.onCut}
+            title="Cut"
+          >
             <Scissors size={14} />
             <span>Cut</span>
           </button>
-          <button type="button" className="icon-button" disabled={props.clipboardCount === 0} onClick={props.onPaste} title="Paste">
+          <button
+            type="button"
+            className="icon-button"
+            disabled={props.clipboardCount === 0}
+            onClick={props.onPaste}
+            title="Paste"
+          >
             <Clipboard size={14} />
             <span>Paste</span>
           </button>
-          <button type="button" className="icon-button delete" disabled={!canEditSelection} onClick={props.onDelete} title="Delete">
+          <button
+            type="button"
+            className="icon-button delete"
+            disabled={!canEditSelection}
+            onClick={props.onDelete}
+            title="Delete"
+          >
             <Trash2 size={14} />
             <span>Del</span>
           </button>
@@ -133,38 +182,68 @@ export function NoteCanvasToolbar(props: Props) {
             <Zap size={15} />
             수직 타임라인 편집기
           </span>
-          <span data-testid="selection-status">선택: {props.selectedCount}</span>
-          <span data-testid="clipboard-status">클립보드: {props.clipboardCount}</span>
+          <span data-testid="selection-status">
+            선택: {props.selectedCount}
+          </span>
+          <span data-testid="clipboard-status">
+            클립보드: {props.clipboardCount}
+          </span>
           <span>Diff: {ghostState}</span>
         </div>
         <div className="zoom-cluster">
           <button
             type="button"
-            aria-label={props.followPlayback ? 'Disable playback follow' : 'Enable playback follow'}
-            className={props.followPlayback ? 'icon-button compact active' : 'icon-button compact'}
+            aria-label={
+              props.followPlayback
+                ? "Disable playback follow"
+                : "Enable playback follow"
+            }
+            className={
+              props.followPlayback
+                ? "icon-button compact active"
+                : "icon-button compact"
+            }
             onClick={props.onToggleFollowPlayback}
-            title={props.followPlayback ? 'Disable playback follow' : 'Enable playback follow'}
+            title={
+              props.followPlayback
+                ? "Disable playback follow"
+                : "Enable playback follow"
+            }
           >
             <LocateFixed size={14} />
           </button>
           <button
             type="button"
-            aria-label={props.showGhostNotes ? 'Hide ghost notes' : 'Show ghost notes'}
+            aria-label={
+              props.showGhostNotes ? "Hide ghost notes" : "Show ghost notes"
+            }
             className="icon-button compact"
             onClick={props.onToggleGhostNotes}
-            title={props.showGhostNotes ? 'Hide ghost notes' : 'Show ghost notes'}
+            title={
+              props.showGhostNotes ? "Hide ghost notes" : "Show ghost notes"
+            }
           >
             {props.showGhostNotes ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
-          <button type="button" className="icon-button compact" onClick={props.onZoomOut} title="Zoom out">
+          <button
+            type="button"
+            className="icon-button compact"
+            onClick={props.onZoomOut}
+            title="Zoom out"
+          >
             <ZoomOut size={14} />
           </button>
           <span>{Math.round(props.zoom * 100)}%</span>
-          <button type="button" className="icon-button compact" onClick={props.onZoomIn} title="Zoom in">
+          <button
+            type="button"
+            className="icon-button compact"
+            onClick={props.onZoomIn}
+            title="Zoom in"
+          >
             <ZoomIn size={14} />
           </button>
         </div>
       </div>
     </div>
-  )
+  );
 }
