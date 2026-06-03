@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { nsToMs } from "@/lib/timeline";
-// for non stop commit hehe
+
 type Props = {
   readonly clipboardCount: number;
   readonly cursorNs: number;
