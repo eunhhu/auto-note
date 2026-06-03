@@ -10,12 +10,19 @@ export type Settings = {
   readonly stop_hotkey: string
 }
 
+export type TimelineSaveStatus =
+  | { readonly kind: 'saved' }
+  | { readonly kind: 'dirty' }
+  | { readonly kind: 'saving' }
+  | { readonly kind: 'error'; readonly message: string }
+
 export type AppState = {
   status: RuntimeStatus
   platform: PlatformStatus | null
   sessions: Session[]
   selectedSessionId: string | null
   settings: Settings
+  timelineSaveStatus: TimelineSaveStatus
   timelineEvents: readonly SessionEvent[]
   timelineKeys: readonly KeyName[]
   importText: string
@@ -37,12 +44,17 @@ export type Action =
   | { type: 'set_stop_hotkey'; value: string }
   | { type: 'set_timeline_events'; events: readonly SessionEvent[] }
   | { type: 'set_timeline_keys'; keys: readonly KeyName[] }
+  | { type: 'edit_timeline_events'; events: readonly SessionEvent[] }
+  | { type: 'edit_timeline_keys'; keys: readonly KeyName[] }
+  | { type: 'set_timeline_save_status'; status: TimelineSaveStatus }
   | { type: 'set_import'; text: string }
   | { type: 'set_export'; text: string }
   | { type: 'set_error'; error: string | null }
   | { type: 'set_report'; report: PlaybackReport | null }
 
 const SETTINGS_KEY = 'auto-note:settings:v1'
+const DIRTY_TIMELINE_STATUS: TimelineSaveStatus = { kind: 'dirty' }
+const SAVED_TIMELINE_STATUS: TimelineSaveStatus = { kind: 'saved' }
 
 const defaultSettings: Settings = {
   bpm: 180,
@@ -118,6 +130,7 @@ export function createInitialState(): AppState {
     sessions: [],
     selectedSessionId: null,
     settings: loadSettings(),
+    timelineSaveStatus: SAVED_TIMELINE_STATUS,
     timelineEvents: [],
     timelineKeys: [],
     importText: '',
@@ -144,6 +157,7 @@ export function appReducer(state: AppState, action: Action): AppState {
           ...state.settings,
           bpm: action.value,
         },
+        timelineSaveStatus: dirtyTimelineStatus(state),
       }
     case 'set_offset_ms':
       return {
@@ -152,6 +166,7 @@ export function appReducer(state: AppState, action: Action): AppState {
           ...state.settings,
           offset_ms: action.value,
         },
+        timelineSaveStatus: dirtyTimelineStatus(state),
       }
     case 'set_hotkey':
       return {
@@ -193,6 +208,21 @@ export function appReducer(state: AppState, action: Action): AppState {
       }
     case 'set_timeline_keys':
       return { ...state, timelineKeys: action.keys }
+    case 'edit_timeline_events':
+      return {
+        ...state,
+        timelineEvents: action.events,
+        timelineKeys: mergeLaneOrder(state.timelineKeys, deriveKeys(action.events)),
+        timelineSaveStatus: dirtyTimelineStatus(state),
+      }
+    case 'edit_timeline_keys':
+      return {
+        ...state,
+        timelineKeys: action.keys,
+        timelineSaveStatus: dirtyTimelineStatus(state),
+      }
+    case 'set_timeline_save_status':
+      return { ...state, timelineSaveStatus: action.status }
     case 'set_import':
       return { ...state, importText: action.text }
     case 'set_export':
@@ -204,6 +234,10 @@ export function appReducer(state: AppState, action: Action): AppState {
     default:
       return state
   }
+}
+
+function dirtyTimelineStatus(state: AppState): TimelineSaveStatus {
+  return state.selectedSessionId ? DIRTY_TIMELINE_STATUS : state.timelineSaveStatus
 }
 
 function parseHotkey(value: unknown, fallback: string): string {

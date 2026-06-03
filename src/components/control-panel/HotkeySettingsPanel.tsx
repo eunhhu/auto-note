@@ -1,12 +1,14 @@
 import { HotkeyField } from '@/components/control-panel/HotkeyField'
+import { timelineSaveStatusText } from '@/components/status/timelineSaveStatusText'
 import type { HotkeyTarget } from '@/features/hotkeys/hotkeyTargets'
-import type { Settings } from '@/store/appStore'
+import type { Settings, TimelineSaveStatus } from '@/store/appStore'
 
 type Props = {
   readonly bpmError: string | null
   readonly canPlay: boolean
   readonly capturingHotkey: HotkeyTarget | null
   readonly settings: Settings
+  readonly timelineSaveStatus: TimelineSaveStatus
   readonly onApplyEditor: () => void
   readonly onSetBpm: (value: number) => void
   readonly onSetOffsetMs: (value: number) => void
@@ -14,6 +16,10 @@ type Props = {
 }
 
 export function HotkeySettingsPanel(props: Props) {
+  const saveDisabled =
+    !props.canPlay || Boolean(props.bpmError) || props.timelineSaveStatus.kind === 'saving'
+  const saveLabel = props.timelineSaveStatus.kind === 'saving' ? 'Saving...' : 'Save Timeline'
+
   return (
     <div className="section">
       <HotkeyField
@@ -57,12 +63,18 @@ export function HotkeySettingsPanel(props: Props) {
         />
       </label>
       {props.bpmError ? <p className="error">{props.bpmError}</p> : null}
+      <p
+        className={`timeline-save-state ${props.timelineSaveStatus.kind}`}
+        data-testid="timeline-save-status"
+      >
+        Timeline: {timelineSaveStatusText(props.timelineSaveStatus)}
+      </p>
       <button
         type="button"
-        disabled={!props.canPlay || Boolean(props.bpmError)}
+        disabled={saveDisabled}
         onClick={props.onApplyEditor}
       >
-        Apply Timeline
+        {saveLabel}
       </button>
     </div>
   )

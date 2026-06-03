@@ -10,7 +10,7 @@ type PlaybackActionArgs = {
   readonly client: TauriApi
   readonly dispatch: Dispatch<Action>
   readonly runtime: RuntimeRefresh
-  readonly selectedSession: Session | null
+  readonly saveTimeline: () => Promise<Session | null>
 }
 
 export function createPlaybackActions(args: PlaybackActionArgs) {
@@ -33,11 +33,12 @@ export function createPlaybackActions(args: PlaybackActionArgs) {
   }
 
   async function onPlay(): Promise<void> {
-    if (!args.selectedSession) {
-      return
-    }
     try {
-      await args.client.playSession(args.selectedSession.id)
+      const session = await args.saveTimeline()
+      if (!session) {
+        return
+      }
+      await args.client.playSession(session.id)
       args.dispatch({ type: 'set_report', report: await args.client.timingReport() })
       await args.runtime.refreshStatus()
     } catch (error) {

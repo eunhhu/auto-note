@@ -56,7 +56,22 @@ export function useWorkspaceController() {
     setCursorNs,
     settings: state.settings,
   })
-  const playbackActions = createPlaybackActions({ client, dispatch, runtime, selectedSession })
+  const sessionActions = createSessionActions({
+    bpmError,
+    client,
+    dispatch,
+    runtime,
+    selectedSession,
+    selectLoadedSession,
+    setCapturingHotkey,
+    state,
+  })
+  const playbackActions = createPlaybackActions({
+    client,
+    dispatch,
+    runtime,
+    saveTimeline: sessionActions.saveTimeline,
+  })
   const recordingActions = createRecordingActions({
     bpmError,
     client,
@@ -70,16 +85,6 @@ export function useWorkspaceController() {
     setCursorNs,
     settings: state.settings,
     timelineKeys: state.timelineKeys,
-  })
-  const sessionActions = createSessionActions({
-    bpmError,
-    client,
-    dispatch,
-    runtime,
-    selectedSession,
-    selectLoadedSession,
-    setCapturingHotkey,
-    state,
   })
   const timelineActions = createTimelineActions({ dispatch, setShowGhostNotes, state })
 

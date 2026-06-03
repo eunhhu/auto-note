@@ -12,20 +12,20 @@ type TimelineActionArgs = {
 
 export function createTimelineActions(args: TimelineActionArgs) {
   function onTimelineEventsChange(events: readonly SessionEvent[]): void {
-    args.dispatch({ type: 'set_timeline_events', events })
+    args.dispatch({ type: 'edit_timeline_events', events })
   }
 
   function onLaneOrderChange(keys: readonly KeyName[]): void {
-    args.dispatch({ type: 'set_timeline_keys', keys })
+    args.dispatch({ type: 'edit_timeline_keys', keys })
   }
 
   function onDeleteLane(key: KeyName): void {
     args.dispatch({
-      type: 'set_timeline_events',
+      type: 'edit_timeline_events',
       events: removeLaneEvents(args.state.timelineEvents, key),
     })
     args.dispatch({
-      type: 'set_timeline_keys',
+      type: 'edit_timeline_keys',
       keys: args.state.timelineKeys.filter((lane) => lane !== key),
     })
   }

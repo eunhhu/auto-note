@@ -42,6 +42,7 @@ function WorkspaceContent() {
         selectedSessionId={app.state.selectedSessionId}
         sessions={app.state.sessions}
         settings={app.state.settings}
+        timelineSaveStatus={app.state.timelineSaveStatus}
         onApplyEditor={app.actions.onApplyEditor}
         onCaptureHotkey={app.actions.onCaptureHotkey}
         onDeleteSession={app.actions.onDeleteSession}

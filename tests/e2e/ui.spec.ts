@@ -69,6 +69,39 @@ test('timeline uses selection-first interaction', async ({ page }) => {
   await page.screenshot({ path: 'evidence/task-11-editor.png', fullPage: true })
 })
 
+test('replay saves manual timeline edits before playing', async ({ page }) => {
+  await page.goto('/')
+  const payload = {
+    schema_version: 2,
+    id: 'manual-save-session',
+    name: 'Manual Save',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    keys: ['M'],
+    bpm: 180,
+    offset_ms: 0,
+    events: [
+      { t_ns: 100_000_000, key: 'M', action: 'press' },
+      { t_ns: 900_000_000, key: 'M', action: 'release' },
+    ],
+  }
+  await page.getByRole('textbox').nth(1).fill(JSON.stringify(payload))
+  await page.getByRole('button', { name: 'Import JSON' }).click()
+  await expect(page.getByTestId('timeline-save-status')).toContainText('Timeline: Saved')
+
+  await page.getByTestId('note-canvas').click({ position: { x: 120, y: 20 } })
+  await page.getByLabel('Release ns').fill('950000000')
+  await expect(page.getByTestId('timeline-save-status')).toContainText('Unsaved changes')
+
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  await expect(page.getByText('Playing: ON')).toBeVisible()
+  await expect(page.getByTestId('timeline-save-status')).toContainText('Timeline: Saved')
+  await page.getByRole('button', { name: 'Stop Replay', exact: true }).click()
+
+  await page.getByRole('button', { name: 'Export Selected' }).click()
+  await expect(page.getByRole('textbox').nth(2)).toContainText('"t_ns": 950000000')
+})
+
 test('replay can pause, resume, and stop without stale UI', async ({ page }) => {
   await page.goto('/')
   const payload = {

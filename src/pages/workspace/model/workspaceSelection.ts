@@ -10,10 +10,12 @@ export function selectWorkspaceSession(dispatch: Dispatch<Action>, session: Sess
   dispatch({ type: 'set_timeline_events', events: session.events })
   dispatch({ type: 'set_bpm', value: session.bpm })
   dispatch({ type: 'set_offset_ms', value: session.offset_ms })
+  dispatch({ type: 'set_timeline_save_status', status: { kind: 'saved' } })
 }
 
 export function clearWorkspaceSession(dispatch: Dispatch<Action>): void {
   dispatch({ type: 'select_session', sessionId: null })
   dispatch({ type: 'set_timeline_keys', keys: [] })
   dispatch({ type: 'set_timeline_events', events: [] })
+  dispatch({ type: 'set_timeline_save_status', status: { kind: 'saved' } })
 }
