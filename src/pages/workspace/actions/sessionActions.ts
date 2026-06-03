@@ -22,9 +22,20 @@ type SessionActionArgs = {
 }
 
 export function createSessionActions(args: SessionActionArgs) {
-  async function onApplyEditor(): Promise<void> {
-    if (!args.selectedSession || args.bpmError) {
-      return
+  async function saveTimeline(): Promise<Session | null> {
+    if (!args.selectedSession) {
+      return null
+    }
+    if (args.bpmError) {
+      args.dispatch({
+        type: 'set_timeline_save_status',
+        status: { kind: 'error', message: args.bpmError },
+      })
+      args.dispatch({ type: 'set_error', error: args.bpmError })
+      return null
+    }
+    if (args.state.timelineSaveStatus.kind === 'saved') {
+      return args.selectedSession
     }
     const nextSession = sessionWithTimeline(
       {
@@ -36,8 +47,26 @@ export function createSessionActions(args: SessionActionArgs) {
       args.state.timelineEvents,
       args.state.timelineKeys,
     )
-    await args.client.updateSession(nextSession)
-    await args.runtime.refreshAll(nextSession.id)
+    args.dispatch({ type: 'set_timeline_save_status', status: { kind: 'saving' } })
+    try {
+      await args.client.updateSession(nextSession)
+      args.selectLoadedSession(nextSession)
+      args.dispatch({ type: 'set_error', error: null })
+      await args.runtime.refreshAll(nextSession.id)
+      return nextSession
+    } catch (error) {
+      const message = errorMessage(error)
+      args.dispatch({
+        type: 'set_timeline_save_status',
+        status: { kind: 'error', message },
+      })
+      args.dispatch({ type: 'set_error', error: message })
+      return null
+    }
+  }
+
+  async function onApplyEditor(): Promise<void> {
+    await saveTimeline()
   }
 
   async function onCaptureHotkey(target: HotkeyTarget, value: string): Promise<void> {
@@ -71,14 +100,22 @@ export function createSessionActions(args: SessionActionArgs) {
   }
 
   async function onExportJson(): Promise<void> {
-    if (!args.selectedSession) {
+    const session = await saveTimeline()
+    if (!session) {
       return
     }
     args.dispatch({
       type: 'set_export',
-      text: await args.client.exportSessionJson(args.selectedSession.id),
+      text: await args.client.exportSessionJson(session.id),
     })
   }
 
-  return { onApplyEditor, onCaptureHotkey, onDeleteSession, onExportJson, onImportJson }
+  return {
+    onApplyEditor,
+    onCaptureHotkey,
+    onDeleteSession,
+    onExportJson,
+    onImportJson,
+    saveTimeline,
+  }
 }

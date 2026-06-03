@@ -106,6 +106,25 @@ button.primary {
     color: #f5d76e;
 }
 
+.timeline-save-state {
+    margin: 0;
+    color: #8f98a8;
+    font-size: 12px;
+}
+
+.timeline-save-state.dirty,
+.timeline-save-state.saving {
+    color: #f5d76e;
+}
+
+.timeline-save-state.error {
+    color: #ff7b8f;
+}
+
+.timeline-save-state.saved {
+    color: #65d6c8;
+}
+
 .workspace {
     display: flex;
     flex-direction: column;

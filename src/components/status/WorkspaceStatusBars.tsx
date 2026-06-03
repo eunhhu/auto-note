@@ -1,5 +1,6 @@
 import { nsToMs } from '@/lib/timeline'
 import type { AppState } from '@/store/appStore'
+import { timelineSaveStatusText } from '@/components/status/timelineSaveStatusText'
 
 type Props = {
   readonly activeKeys: readonly [string, boolean][]
@@ -44,6 +45,7 @@ export function WorkspaceStatusBars(props: Props) {
           max_drift_ns: {props.state.report?.max_drift_ns ?? '-'} / emitted_events:{' '}
           {props.state.report?.emitted_events ?? '-'}
         </span>
+        <span>timeline: {timelineSaveStatusText(props.state.timelineSaveStatus)}</span>
         <span>cursor: {nsToMs(props.cursorNs)} ms</span>
       </div>
     </>

@@ -3,7 +3,7 @@ import { HotkeySettingsPanel } from '@/components/control-panel/HotkeySettingsPa
 import { ImportExportPanel } from '@/components/control-panel/ImportExportPanel'
 import { SessionList } from '@/components/control-panel/SessionList'
 import type { HotkeyTarget } from '@/features/hotkeys/hotkeyTargets'
-import type { Settings } from '@/store/appStore'
+import type { Settings, TimelineSaveStatus } from '@/store/appStore'
 import type { Session } from '@/lib/types'
 import { useHotkeyCapture } from '@/features/hotkeys/useHotkeyCapture'
 
@@ -21,6 +21,7 @@ type Props = {
   readonly selectedSessionId: string | null
   readonly sessions: readonly Session[]
   readonly settings: Settings
+  readonly timelineSaveStatus: TimelineSaveStatus
   readonly onApplyEditor: () => void
   readonly onCaptureHotkey: (target: HotkeyTarget, value: string) => void
   readonly onDeleteSession: (sessionId: string) => void
@@ -74,6 +75,7 @@ export function ControlPanel(props: Props) {
         canPlay={props.canPlay}
         capturingHotkey={props.capturingHotkey}
         settings={props.settings}
+        timelineSaveStatus={props.timelineSaveStatus}
         onApplyEditor={props.onApplyEditor}
         onSetBpm={props.onSetBpm}
         onSetOffsetMs={props.onSetOffsetMs}
